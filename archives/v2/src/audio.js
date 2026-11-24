@@ -1,0 +1,382 @@
+// PELAGIC V2 — sonification locale (Web Audio API, aucune ressource externe).
+// Auteur : CLAUDE. Quatre voix synthétisées, quatre gammes, scintillement des
+// flashes de plancton, et enregistrement de la sortie en fichier local.
+
+/** Gammes en demi-tons sur une octave. */
+export const SCALES = Object.freeze({
+  pentatonic: [0, 3, 5, 7, 10],
+  dorian: [0, 2, 3, 5, 7, 9, 10],
+  insen: [0, 1, 5, 7, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
+});
+export const SCALE_LABELS = Object.freeze({
+  pentatonic: 'Pentatonique',
+  dorian: 'Dorien',
+  insen: 'In-sen',
+  lydian: 'Lydien',
+});
+export const VOICES = Object.freeze(['glass', 'bell', 'pluck', 'breath']);
+export const VOICE_LABELS = Object.freeze({ glass: 'Verre', bell: 'Cloche des abysses', pluck: 'Pizzicato', breath: 'Souffle' });
+
+// Alias français acceptés (le moteur stocke les clés anglaises canoniques).
+const SCALE_ALIASES = { pentatonique: 'pentatonic', dorien: 'dorian', lydien: 'lydian' };
+const VOICE_ALIASES = { verre: 'glass', abysse: 'bell', pizz: 'pluck', souffle: 'breath' };
+const own = (o, k) => typeof k === 'string' && Object.hasOwn(o, k);
+export const canonicalScale = (s) => {
+  const k = own(SCALE_ALIASES, s) ? SCALE_ALIASES[s] : s;
+  return own(SCALES, k) ? k : 'pentatonic';
+};
+export const canonicalVoice = (v) => {
+  const k = own(VOICE_ALIASES, v) ? VOICE_ALIASES[v] : v;
+  return VOICES.includes(k) ? k : 'glass';
+};
+
+const BASE_FREQ = 110; // La2
+const OCTAVES = 3;
+
+/** Degrés de la gamme sur trois octaves (+ la tonique finale). */
+export function scaleSteps(scale = 'pentatonic') {
+  const steps = SCALES[canonicalScale(scale)];
+  const out = [];
+  for (let o = 0; o < OCTAVES; o++) for (const s of steps) out.push(s + 12 * o);
+  out.push(12 * OCTAVES);
+  return out;
+}
+
+/**
+ * Profondeur normalisée → fréquence (0 = surface = aigu).
+ * @param {number} y position [0,1]
+ * @param {string} scale clé de SCALES
+ */
+export function pitchForDepth(y, scale = 'pentatonic') {
+  const steps = scaleSteps(scale);
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(y) ? y : 0.5));
+  const index = Math.round((1 - clamped) * (steps.length - 1));
+  return BASE_FREQ * 2 ** (steps[index] / 12);
+}
+
+/** Nom lisible de la note (pour l'interface et l'accessibilité). */
+export function noteName(freq) {
+  const names = ['La', 'La♯', 'Si', 'Do', 'Do♯', 'Ré', 'Ré♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯'];
+  const semis = Math.round(12 * Math.log2(freq / BASE_FREQ));
+  const octave = 2 + Math.floor((semis + 9) / 12);
+  return `${names[((semis % 12) + 12) % 12]}${octave}`;
+}
+
+/** Choisit un format d'enregistrement pris en charge (ou null). */
+export function pickRecordingType(isSupported) {
+  const candidates = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4'];
+  for (const t of candidates) {
+    try {
+      if (isSupported(t)) return t;
+    } catch { /* navigateur restrictif */ }
+  }
+  return null;
+}
+
+/**
+ * Crée le moteur audio. L'AudioContext n'est instancié qu'au premier geste
+ * utilisateur (politique d'autoplay des navigateurs).
+ */
+export function createAudio() {
+  let ctx = null;
+  let master = null;
+  let bus = null; // sortie finale (compresseur), branchée sur les haut-parleurs et l'enregistreur
+  let enabled = false;
+  let volume = 0.6;
+  let voices = 0;
+  let noise = null;
+  let lastShimmer = 0;
+  let recorder = null;
+  let recordStream = null;
+  let chunks = [];
+  const MAX_VOICES = 32;
+
+  function ensure() {
+    if (ctx) return true;
+    const Ctor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!Ctor) return false;
+    try {
+      ctx = new Ctor({ latencyHint: 'interactive' });
+    } catch {
+      return false;
+    }
+    master = ctx.createGain();
+    master.gain.value = volume;
+
+    // Écho sous-marin : délai filtré réinjecté, légèrement modulé (houle).
+    const delay = ctx.createDelay(2);
+    delay.delayTime.value = 0.42;
+    const wobble = ctx.createOscillator();
+    wobble.frequency.value = 0.13;
+    const wobbleDepth = ctx.createGain();
+    wobbleDepth.gain.value = 0.004;
+    wobble.connect(wobbleDepth);
+    wobbleDepth.connect(delay.delayTime);
+    wobble.start();
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.4;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 1700;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.45;
+
+    bus = ctx.createDynamicsCompressor();
+    bus.threshold.value = -18;
+    bus.ratio.value = 4;
+
+    master.connect(bus);
+    master.connect(delay);
+    delay.connect(damp);
+    damp.connect(feedback);
+    feedback.connect(delay);
+    damp.connect(wet);
+    wet.connect(bus);
+    bus.connect(ctx.destination);
+
+    // Bruit blanc partagé (breath, scintillement).
+    const len = ctx.sampleRate * 2;
+    noise = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = noise.getChannelData(0);
+    let seed = 1234567;
+    for (let i = 0; i < len; i++) {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      data[i] = (seed / 4294967296) * 2 - 1;
+    }
+    return true;
+  }
+
+  function output(pan) {
+    const out = ctx.createGain();
+    let node = out;
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.min(1, Math.max(-1, pan));
+      out.connect(p);
+      node = p;
+    }
+    node.connect(master);
+    return { out, node };
+  }
+
+  function track(source, nodes) {
+    voices += 1;
+    source.onended = () => {
+      voices -= 1;
+      for (const n of nodes) {
+        try { n.disconnect(); } catch { /* déjà déconnecté */ }
+      }
+    };
+  }
+
+  function env(param, t, peak, attack, release) {
+    param.setValueAtTime(0.0001, t);
+    param.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
+    param.exponentialRampToValueAtTime(0.0001, t + attack + release);
+  }
+
+  const synth = {
+    // Verre : FM douce, rapport 3,5.
+    glass(freq, v, t, pan) {
+      const { out, node } = output(pan);
+      env(out.gain, t, 0.22 * v, 0.012, 1.6 + v);
+      const car = ctx.createOscillator();
+      car.frequency.value = freq;
+      const mod = ctx.createOscillator();
+      mod.frequency.value = freq * 3.5;
+      const mg = ctx.createGain();
+      mg.gain.setValueAtTime(freq * 1.4 * v, t);
+      mg.gain.exponentialRampToValueAtTime(1, t + 0.6);
+      mod.connect(mg);
+      mg.connect(car.frequency);
+      car.connect(out);
+      const end = t + 2.8 + v;
+      car.start(t); mod.start(t); car.stop(end); mod.stop(end);
+      track(car, [car, mod, mg, out, node]);
+    },
+    // Cloche des bells : partiels inharmoniques, une octave plus bas.
+    bell(freq, v, t, pan) {
+      const { out, node } = output(pan);
+      out.gain.value = 1;
+      const f0 = freq / 2;
+      const partials = [[1, 1, 4.5], [2.76, 0.5, 2.6], [5.4, 0.28, 1.4], [8.93, 0.12, 0.8]];
+      const oscs = [];
+      for (const [ratio, amp, decay] of partials) {
+        const o = ctx.createOscillator();
+        o.frequency.value = f0 * ratio;
+        const g = ctx.createGain();
+        env(g.gain, t, 0.16 * v * amp, 0.004, decay);
+        o.connect(g);
+        g.connect(out);
+        o.start(t);
+        o.stop(t + decay + 0.1);
+        oscs.push(o, g);
+      }
+      track(oscs[0], [...oscs, out, node]);
+    },
+    // Pizzicato : dent de scie filtrée, attaque sèche.
+    pluck(freq, v, t, pan) {
+      const { out, node } = output(pan);
+      env(out.gain, t, 0.2 * v, 0.003, 0.45);
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = freq;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.Q.value = 6;
+      f.frequency.setValueAtTime(freq * 8, t);
+      f.frequency.exponentialRampToValueAtTime(freq * 1.2, t + 0.3);
+      o.connect(f);
+      f.connect(out);
+      o.start(t);
+      o.stop(t + 0.6);
+      track(o, [o, f, out, node]);
+    },
+    // Souffle : bruit filtré en bande étroite, attaque lente (nappe).
+    breath(freq, v, t, pan) {
+      const { out, node } = output(pan);
+      out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(0.5 * v, t + 0.35);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = freq * 2;
+      bp.Q.value = 28;
+      const tone = ctx.createOscillator();
+      tone.frequency.value = freq;
+      const tg = ctx.createGain();
+      tg.gain.value = 0.04;
+      src.connect(bp);
+      bp.connect(out);
+      tone.connect(tg);
+      tg.connect(out);
+      src.start(t, Math.random() * 1.5);
+      tone.start(t);
+      src.stop(t + 2.5);
+      tone.stop(t + 2.5);
+      track(src, [src, bp, tone, tg, out, node]);
+    },
+  };
+
+  return {
+    get supported() {
+      return Boolean(globalThis.AudioContext || globalThis.webkitAudioContext);
+    },
+    get enabled() {
+      return enabled;
+    },
+    get now() {
+      return ctx ? ctx.currentTime : 0;
+    },
+    get recording() {
+      return Boolean(recorder && recorder.state === 'recording');
+    },
+    get canRecord() {
+      return Boolean(globalThis.MediaRecorder && (globalThis.AudioContext || globalThis.webkitAudioContext));
+    },
+    /** Active le son (doit être appelé dans un gestionnaire d'événement). */
+    async enable() {
+      if (!ensure()) return false;
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume();
+        } catch {
+          return false;
+        }
+      }
+      enabled = true;
+      return true;
+    },
+    disable() {
+      enabled = false;
+      if (this.recording) return; // on ne coupe pas un enregistrement en cours
+      if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+    },
+    setVolume(v) {
+      volume = Math.min(1, Math.max(0, Number(v) || 0));
+      if (master) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+    },
+    /**
+     * Joue une note.
+     * @param {number} freq fréquence
+     * @param {object} o { velocity 0..1, pan -1..1, voice, delay (s) }
+     */
+    note(freq, { velocity = 0.5, pan = 0, voice = 'glass', delay = 0 } = {}) {
+      if (!enabled || !ctx || ctx.state !== 'running' || voices >= MAX_VOICES) return false;
+      if (!Number.isFinite(freq) || freq <= 0) return false;
+      const v = Math.min(1, Math.max(0.05, velocity));
+      const t = ctx.currentTime + Math.max(0, Math.min(2, delay)) + 0.01;
+      synth[canonicalVoice(voice)](freq, v, t, pan);
+      return true;
+    },
+    /** Compatibilité V1. */
+    chime(freq, velocity = 0.5, pan = 0) {
+      return this.note(freq, { velocity, pan, voice: 'glass' });
+    },
+    /**
+     * Scintillement des flashes de plancton : grains aigus très doux, dont
+     * la densité suit le nombre de déclenchements (limité à ~12 grains/s).
+     */
+    shimmer(intensity, pan = 0) {
+      if (!enabled || !ctx || ctx.state !== 'running' || voices >= MAX_VOICES - 4) return false;
+      const k = Math.min(1, Math.max(0, intensity));
+      if (k < 0.02 || ctx.currentTime - lastShimmer < 0.08) return false;
+      lastShimmer = ctx.currentTime;
+      const t = ctx.currentTime + 0.005;
+      const { out, node } = output(pan);
+      env(out.gain, t, 0.05 * k, 0.01, 0.25);
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'bandpass';
+      hp.frequency.value = 5200 + Math.random() * 3000;
+      hp.Q.value = 12;
+      src.connect(hp);
+      hp.connect(out);
+      src.start(t, Math.random() * 1.5);
+      src.stop(t + 0.3);
+      track(src, [src, hp, out, node]);
+      return true;
+    },
+    /** Démarre l'enregistrement de la sortie audio (renvoie false si impossible). */
+    startRecording() {
+      if (!enabled || !ctx || this.recording || !globalThis.MediaRecorder) return false;
+      const type = pickRecordingType((t) => MediaRecorder.isTypeSupported(t));
+      if (!recordStream) {
+        recordStream = ctx.createMediaStreamDestination();
+        bus.connect(recordStream);
+      }
+      chunks = [];
+      try {
+        recorder = new MediaRecorder(recordStream.stream, type ? { mimeType: type } : undefined);
+      } catch {
+        recorder = null;
+        return false;
+      }
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      recorder.start(500);
+      return true;
+    },
+    /** Arrête l'enregistrement et renvoie le fichier (Blob) ou null. */
+    stopRecording() {
+      return new Promise((resolve) => {
+        if (!recorder || recorder.state === 'inactive') {
+          resolve(null);
+          return;
+        }
+        const rec = recorder;
+        rec.onstop = () => {
+          const blob = chunks.length ? new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) : null;
+          chunks = [];
+          recorder = null;
+          resolve(blob);
+        };
+        rec.stop();
+      });
+    },
+  };
+}

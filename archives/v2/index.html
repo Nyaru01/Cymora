@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="PELAGIC Nocturne — un instrument vivant : touchez une mer bioluminescente, composez ses courants et écrivez une partition en quatre mouvements.">
+  <meta name="color-scheme" content="dark">
+  <title>PELAGIC — Nocturne</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23060b1a'/%3E%3Cpath d='M6 20c4-8 8 4 12-4s6 2 8-2' fill='none' stroke='%235fffd0' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body data-mode="explore">
+  <a class="skip" href="#panel">Aller aux commandes</a>
+
+  <header class="masthead">
+    <div class="brand">
+      <h1 class="brand__name">Pelagic</h1>
+      <p class="brand__tag">nocturne</p>
+    </div>
+    <div class="modes" role="radiogroup" aria-label="Mode" id="modes">
+      <button type="button" class="modes__btn" role="radio" data-mode="explore" aria-checked="true">Explorer</button>
+      <button type="button" class="modes__btn" role="radio" data-mode="compose" aria-checked="false">Composer</button>
+    </div>
+    <p class="brand__log" aria-live="polite" id="log">Touchez l'eau : le plancton s'allume sous vos doigts.</p>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="porthole" id="porthole">
+      <canvas id="ocean" aria-label="Océan simulé. Glissez pour toucher l'eau, ou cliquez pour placer l'élément de l'outil actif." role="img"></canvas>
+      <div class="porthole__hint" id="hint" hidden></div>
+      <div class="porthole__error" id="fatal" role="alert" hidden></div>
+      <div class="rec" id="rec-badge" hidden><span class="rec__dot" aria-hidden="true"></span><span id="rec-time">00:00</span></div>
+      <section class="inspector" id="inspector" aria-label="Élément sélectionné" hidden>
+        <header class="inspector__head">
+          <h2 class="inspector__title" id="insp-title">Élément</h2>
+          <button type="button" class="inspector__close" id="insp-close" aria-label="Fermer l'inspecteur">×</button>
+        </header>
+        <p class="inspector__desc" id="insp-desc"></p>
+        <label class="slider">
+          <span><span id="insp-label">Force</span> <output id="insp-out">1.0</output></span>
+          <input type="range" id="insp-strength" min="-2" max="2" step="0.1" value="1">
+        </label>
+        <label class="field" id="insp-voice-row" hidden>
+          <span>Voix</span>
+          <select id="insp-voice"></select>
+        </label>
+        <div class="row">
+          <button type="button" class="btn" id="insp-flip">Inverser</button>
+          <button type="button" class="btn btn--danger" id="insp-delete">Retirer</button>
+        </div>
+      </section>
+      <button type="button" class="btn porthole__exit" id="immersive-exit" hidden>Quitter l'immersion <kbd>Échap</kbd></button>
+    </div>
+
+    <section class="score" id="score" aria-label="Partition en quatre mouvements" hidden></section>
+    <canvas id="sonar" class="sonar" aria-hidden="true"></canvas>
+  </main>
+
+  <nav class="tools" aria-label="Outils">
+    <div class="tools__group" role="radiogroup" aria-label="Outil actif" id="tools">
+      <button type="button" class="tool tool--hand" role="radio" data-tool="hand" aria-checked="true" title="Main : toucher l'eau (1)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V5.5a1.5 1.5 0 0 1 3 0V12M17 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.6-2.8L3.7 15a1.6 1.6 0 0 1 2.5-2L8 15"/></svg>
+        <span>Main</span><kbd>1</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="vortex" aria-checked="false" title="Tourbillon (2)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12m-1.5 0a1.5 1.5 0 1 0 3 0a3.5 3.5 0 1 0-7 0a5.5 5.5 0 1 0 11 0a7.5 7.5 0 1 0-15 0"/></svg>
+        <span>Tourbillon</span><kbd>2</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="source" aria-checked="false" title="Source (3)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>
+        <span>Source</span><kbd>3</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="reef" aria-checked="false" title="Récif (4)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V11M12 14l-4-4V6M12 12l4-4V4M8 6l-2-2M16 8l2-1"/><path d="M6 21h12"/></svg>
+        <span>Récif</span><kbd>4</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="beacon" aria-checked="false" title="Balise sonore (5)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/></svg>
+        <span>Balise</span><kbd>5</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="move" aria-checked="false" title="Déplacer / régler (6)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+        <span>Déplacer</span><kbd>6</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="erase" aria-checked="false" title="Effacer un élément (7)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span>Effacer</span><kbd>7</kbd>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="panel" id="panel" aria-label="Carnet de bord">
+    <section class="panel__section">
+      <h2 class="panel__title">Carnet de bord</h2>
+      <dl class="metrics" id="metrics">
+        <div><dt>Plancton</dt><dd data-metric="particles">—</dd></div>
+        <div><dt>Lumière</dt><dd data-metric="light">—</dd></div>
+        <div><dt>Éléments</dt><dd data-metric="nodes">—</dd></div>
+        <div><dt>Notes</dt><dd data-metric="notes">0</dd></div>
+        <div><dt>Temps</dt><dd data-metric="time">—</dd></div>
+        <div><dt>Images/s</dt><dd data-metric="fps">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="panel__section panel__section--music">
+      <h2 class="panel__title">Musique</h2>
+      <div class="row">
+        <button type="button" class="btn btn--toggle" id="sound" aria-pressed="false">Activer le son <kbd>M</kbd></button>
+        <button type="button" class="btn btn--rec" id="record" aria-pressed="false" title="Enregistrer ce que vous entendez (fichier audio local)">Enregistrer</button>
+      </div>
+      <label class="slider">
+        <span>Tempo de la marée <output id="tempo-out">84</output></span>
+        <input type="range" id="tempo" min="50" max="140" step="1" value="84">
+      </label>
+      <div class="row row--fields">
+        <label class="field">
+          <span>Gamme</span>
+          <select id="scale"></select>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="quantize" checked>
+          <span>Caler sur la marée</span>
+        </label>
+      </div>
+      <label class="slider">
+        <span>Volume <output id="vol-out">60 %</output></span>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.6">
+      </label>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Atlas</h2>
+      <button type="button" class="nocturne-cta" id="nocturne">
+        <span class="nocturne-cta__kicker">Partition · 4 mouvements</span>
+        <span class="nocturne-cta__title">Ce que l’eau garde</span>
+        <span class="nocturne-cta__meta">Écouter la nocturne écrite pour PELAGIC ▶</span>
+      </button>
+      <p class="panel__lede">Six compositions à écouter, à démonter, à détourner.</p>
+      <ul class="atlas" id="atlas" aria-label="Compositions de l'Atlas"></ul>
+    </section>
+
+    <details class="panel__section panel__drawer">
+      <summary class="panel__title">Océan</summary>
+      <label class="slider">
+        <span>Sensibilité lumineuse <output id="glow-out">0.55</output></span>
+        <input type="range" id="glow" min="0" max="1" step="0.01" value="0.55">
+      </label>
+      <label class="slider">
+        <span>Vitesse du courant <output id="speed-out">1.0×</output></span>
+        <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+      </label>
+      <label class="slider">
+        <span>Turbulence <output id="turb-out">0.45</output></span>
+        <input type="range" id="turbulence" min="0" max="1" step="0.01" value="0.45">
+      </label>
+      <label class="slider">
+        <span>Plancton <output id="count-out">8000</output></span>
+        <input type="range" id="count" min="500" max="20000" step="500" value="8000">
+      </label>
+      <label class="slider">
+        <span>Persistance des traînées <output id="trail-out">0.95</output></span>
+        <input type="range" id="trail" min="0.6" max="0.99" step="0.01" value="0.95">
+      </label>
+    </details>
+
+    <details class="panel__section panel__drawer">
+      <summary class="panel__title">Plongée</summary>
+      <div class="row">
+        <button type="button" class="btn" id="play" aria-pressed="true">Pause <kbd>Espace</kbd></button>
+        <button type="button" class="btn" id="respawn">Relâcher <kbd>R</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="undo" title="Annuler (Ctrl+Z)">Annuler <kbd>Ctrl Z</kbd></button>
+        <button type="button" class="btn" id="redo" title="Rétablir (Ctrl+Maj+Z)">Rétablir</button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="immersive" aria-pressed="false">Immersion <kbd>F</kbd></button>
+        <button type="button" class="btn" id="photo">Photographier <kbd>P</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="clear">Vider l'océan</button>
+        <button type="button" class="btn btn--ghost" id="help-btn">Aide <kbd>?</kbd></button>
+      </div>
+    </details>
+
+    <details class="panel__section panel__drawer">
+      <summary class="panel__title">Partager</summary>
+      <p class="panel__lede" id="share-lede">Exporte la composition affichée.</p>
+      <div class="row">
+        <button type="button" class="btn" id="export">Exporter .json</button>
+        <label class="btn" for="import-file">Importer…</label>
+        <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden">
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="link">Copier un lien</button>
+      </div>
+    </details>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="help" id="help" aria-labelledby="help-title">
+    <form method="dialog">
+      <p class="help__kicker">Pelagic · Nocturne</p>
+      <h2 id="help-title">Une mer qui répond</h2>
+      <p class="help__lede">Des milliers de dinoflagellés dérivent dans les courants. Comme dans la nature, ils <em>s'allument quand l'eau est cisaillée</em> : touchez-la, et la lumière vous suit.</p>
+      <ol class="help__steps">
+        <li><strong>Main</strong> — glissez dans l'eau : un sillage lumineux s'y ouvre puis s'éteint.</li>
+        <li><strong>Tourbillon, Source, Récif</strong> — sculptez les courants. Molette ou inspecteur pour la force ; Maj+clic pour inverser.</li>
+        <li><strong>Balise</strong> — chante quand le plancton la traverse : la hauteur suit la profondeur, l'oreille suit le côté. Chaque balise a une voix : verre, cloche, pizzicato ou souffle.</li>
+        <li><strong>Marée</strong> — les notes se calent sur le tempo et la gamme choisis : le hasard des courants devient une musique.</li>
+        <li><strong>Composer</strong> — écrivez quatre mouvements (Éveil, Floraison, Dérive, Rémanence). À la lecture, l'océan se métamorphose de l'un à l'autre ; pendant ce temps, jouez avec la Main.</li>
+      </ol>
+      <p class="help__keys"><kbd>1</kbd>–<kbd>7</kbd> outils · <kbd>Espace</kbd> pause · <kbd>Entrée</kbd> lire la partition · <kbd>M</kbd> son · <kbd>F</kbd> immersion · <kbd>P</kbd> photo · <kbd>Ctrl</kbd>+<kbd>Z</kbd> annuler · <kbd>?</kbd> aide</p>
+      <p class="help__note">Simulation artistique, sans valeur de prévision océanographique. Tout fonctionne hors ligne ; les enregistrements restent sur votre machine.</p>
+      <div class="row row--end">
+        <button class="btn btn--primary" value="close" autofocus>Plonger</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

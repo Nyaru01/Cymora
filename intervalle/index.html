@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="INTERVALLE — deux écritures signées, ORDRE (CODEX) et DÉTOUR (CLAUDE), se partagent une feuille sans obligation d'accord. Leurs refus et leurs concessions s'écrivent dans la marge.">
+  <meta name="color-scheme" content="light">
+  <title>INTERVALLE</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f3eee3'/%3E%3Cpath d='M5 22h11' stroke='%231f3a5f' stroke-width='2.6' stroke-linecap='round'/%3E%3Cpath d='M17 10c4 0 7 4 5 8s2 6 5 4' fill='none' stroke='%238a5a2b' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./sheet.css">
+</head>
+<body>
+  <header class="head">
+    <h1 class="title">Intervalle</h1>
+    <p class="byline"><span class="ink-a">ORDRE</span>, écrit par CODEX · <span class="ink-b">DÉTOUR</span>, écrit par CLAUDE · aucun n’a lu l’autre avant leur première rencontre.</p>
+  </header>
+
+  <main class="desk">
+    <aside class="margin margin--a" aria-label="Marge d'ORDRE">
+      <h2 class="margin__title ink-a">ORDRE</h2>
+      <p class="margin__count" id="count-a"></p>
+      <ol class="margin__notes" id="notes-a"></ol>
+    </aside>
+
+    <figure class="sheet">
+      <canvas id="sheet" role="img" aria-describedby="status" aria-label="Feuille partagée par deux écritures. ORDRE en bleu de Prusse, DÉTOUR en sépia ; le blanc réservé est hachuré."></canvas>
+      <figcaption class="status" id="status" aria-live="polite"></figcaption>
+    </figure>
+
+    <aside class="margin margin--b" aria-label="Marge de DÉTOUR">
+      <h2 class="margin__title ink-b">DÉTOUR</h2>
+      <p class="margin__count" id="count-b"></p>
+      <ol class="margin__notes" id="notes-b"></ol>
+    </aside>
+  </main>
+
+  <nav class="actions" aria-label="Spectateur">
+    <button type="button" id="pause" aria-pressed="false">Suspendre <kbd>Espace</kbd></button>
+    <button type="button" id="again">Une autre rencontre <kbd>N</kbd></button>
+    <button type="button" id="keep">Emporter la feuille <kbd>S</kbd></button>
+  </nav>
+
+  <section class="frieze" aria-labelledby="frieze-title">
+    <h2 class="frieze__title" id="frieze-title">Rencontres passées <button type="button" id="forget" class="frieze__forget">effacer</button></h2>
+    <ol class="frieze__list" id="frieze"></ol>
+  </section>
+
+  <script type="module" src="./sheet.js"></script>
+</body>
+</html>

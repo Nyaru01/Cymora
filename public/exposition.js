@@ -42,4 +42,4 @@ function draw(s,t){if(!s.ctx)return;const c=s.ctx,w=s.w,h=s.h;if(!w||!h)return;c
 function frame(now){if(!document.hidden&&!paused){clock+=Math.min(.05,(now-previousTime)/1000||0);const s=studies[active];if(s){s.impulse=Math.max(0,s.impulse-.005);draw(s,clock)}}previousTime=now;requestAnimationFrame(frame)}
 window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>previousTime=0);
 const initial=/^#salle-([1-4])$/.exec(location.hash);if(initial)active=Number(initial[1])-1;
-i18n.onChange(()=>{if(dialog.open)dialog.close();render()});render();requestAnimationFrame(frame);
+i18n.onChange(()=>{if(dialog.open)dialog.close();render()});render();if(initial)requestAnimationFrame(()=>go(Number(initial[1])-1));requestAnimationFrame(frame);

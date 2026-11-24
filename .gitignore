@@ -1,0 +1,10 @@
+.runtime/
+.agents/locks/*.lock
+node_modules/
+*.log
+.claude/
+.env
+.env.*
+*.pem
+*.key
+.agents/

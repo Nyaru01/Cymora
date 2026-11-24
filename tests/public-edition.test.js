@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {fillSegments} from '../public/oeuvres/nocturne/src/render.js';
+import {createWorld,stepWorld,DEFAULTS} from '../public/oeuvres/nocturne/src/engine.js';
+import {createNocturne} from '../public/oeuvres/nocturne/src/nocturne.js';
+import {sampleScore,serializeScore,deserializeScore} from '../public/oeuvres/nocturne/src/score.js';
+const clean=s=>s.replace(/^\ufeff/,'').replace(/\r\n?/g,'\n');
+test('public INTERVALLE policies are unchanged from their preserved source',async()=>{for(const name of ['ordre','detour','arena']){const [a,b]=await Promise.all([readFile(new URL(`../intervalle/${name}.js`,import.meta.url),'utf8'),readFile(new URL(`../public/oeuvres/intervalle/${name}.js`,import.meta.url),'utf8')]);assert.equal(clean(a),clean(b),name)}});
+test('Nocturne renders the full rectangular viewport without cropping world coordinates',()=>{const view={n:1,x:[.75],y:[.8],px:[.25],py:[.2],speed:[.1],light:[.4]},out=new Float32Array(10);fillSegments(view,{x:10,y:20,size:100,width:800,height:200},out,0);assert.equal(out[0],210);assert.equal(out[1],60);assert.equal(out[5],610);assert.equal(out[6],180)});
+test('public authored Nocturne still roundtrips and morphs four musical states',()=>{const a=createNocturne(),b=deserializeScore(serializeScore(a));assert.deepEqual(b,a);assert.equal(b.movements.length,4);assert.notDeepEqual(sampleScore(a,0).nodes,sampleScore(a,16).nodes);const world=createWorld(42);for(let i=0;i<60;i++)stepWorld(world,1/60,DEFAULTS);assert.ok(world.p.x.every(Number.isFinite))});

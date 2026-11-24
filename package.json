@@ -1,1 +1,1 @@
-{"name":"quatre-historical-snapshot","version":"4.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs"},"engines":{"node":">=22"}}
+{"name":"quatre","version":"5.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test --test-timeout=15000","benchmark":"node scripts/benchmark.mjs","audit:public":"node scripts/audit-public.mjs"},"engines":{"node":">=22"}}

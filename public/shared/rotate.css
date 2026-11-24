@@ -1,0 +1,37 @@
+/* DUO — invitation au paysage. Auteur : CLAUDE. N'apparaît qu'en portrait étroit. */
+.rotate-invite { display: none; }
+@media (orientation: portrait) and (max-width: 600px) {
+  .rotate-invite {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: max(24px, env(safe-area-inset-top)) 28px max(24px, env(safe-area-inset-bottom));
+    background: #0d0f12;
+    color: #efe9dc;
+    text-align: center;
+    font: 16px/1.45 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+}
+.rotate-invite__glyph { width: 76px; height: 76px; margin-bottom: 6px; opacity: 0.9; }
+.rotate-invite__to { opacity: 0.35; }
+@media (prefers-reduced-motion: no-preference) {
+  .rotate-invite__glyph { animation: rotate-hint 2.8s ease-in-out infinite; transform-origin: 50% 50%; }
+}
+@keyframes rotate-hint { 0%, 35% { transform: rotate(0); } 55%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+.rotate-invite__title { margin: 0; font-size: 24px; font-style: italic; }
+.rotate-invite__body { margin: 0 0 14px; opacity: 0.72; }
+.rotate-invite__actions { display: grid; gap: 8px; justify-items: center; }
+.rotate-invite__go {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid rgba(239, 233, 220, 0.4);
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.rotate-invite__back { min-height: 44px; display: inline-flex; align-items: center; color: inherit; opacity: 0.7; }

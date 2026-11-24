@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="PELAGIC — composez un océan bioluminescent : placez des courants, des récifs et des balises qui chantent.">
+  <meta name="color-scheme" content="dark">
+  <title>PELAGIC — le jardin des courants</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23060b1a'/%3E%3Cpath d='M6 20c4-8 8 4 12-4s6 2 8-2' fill='none' stroke='%235fffd0' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../../shared/rotate.css">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <a class="skip" href="#tools" data-i18n="skip">Aller aux commandes</a>
+
+  <header class="masthead">
+    <a class="home" href="../../" data-i18n-attr="aria-label:home.label"><span aria-hidden="true">←</span> <span data-i18n="home">Exposition</span></a>
+    <div class="brand">
+      <h1 class="brand__name">Pelagic</h1>
+      <p class="brand__tag" data-i18n="tag">le jardin des courants</p>
+    </div>
+    <p class="brand__log" aria-live="polite" id="log"></p>
+    <div class="masthead__end">
+      <button type="button" class="btn panel-toggle" id="panel-toggle" aria-expanded="false" aria-controls="panel" data-i18n="panel.open">Carnet</button>
+      <div id="lang"></div>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="porthole" id="porthole">
+      <canvas id="ocean" data-i18n-attr="aria-label:ocean.label" role="img"></canvas>
+      <div class="porthole__hint" id="hint" hidden></div>
+      <div class="porthole__error" id="fatal" role="alert" hidden></div>
+      <section class="inspector" id="inspector" data-i18n-attr="aria-label:insp.label" hidden>
+        <header class="inspector__head">
+          <h2 class="inspector__title" id="insp-title">Élément</h2>
+          <button type="button" class="inspector__close" id="insp-close" data-i18n-attr="aria-label:insp.close">×</button>
+        </header>
+        <p class="inspector__desc" id="insp-desc"></p>
+        <label class="slider">
+          <span><span id="insp-label">Force</span> <output id="insp-out">1.0</output></span>
+          <input type="range" id="insp-strength" min="-2" max="2" step="0.1" value="1">
+        </label>
+        <div class="row">
+          <button type="button" class="btn" id="insp-flip" data-i18n="insp.flip">Inverser</button>
+          <button type="button" class="btn btn--danger" id="insp-delete" data-i18n="insp.delete">Retirer</button>
+        </div>
+      </section>
+      <button type="button" class="btn porthole__exit" id="immersive-exit" hidden><span data-i18n="immersive.exit">Quitter l’immersion</span> <kbd>Esc</kbd></button>
+    </div>
+
+    <canvas id="sonar" class="sonar" aria-hidden="true"></canvas>
+  </main>
+
+  <nav class="tools" id="tools-nav" data-i18n-attr="aria-label:tools.label">
+    <div class="tools__group" role="radiogroup" data-i18n-attr="aria-label:tools.active" id="tools">
+      <button type="button" class="tool" role="radio" data-tool="vortex" data-i18n-attr="aria-label:vortex" aria-checked="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12m-1.5 0a1.5 1.5 0 1 0 3 0a3.5 3.5 0 1 0-7 0a5.5 5.5 0 1 0 11 0a7.5 7.5 0 1 0-15 0"/></svg>
+        <span data-i18n="vortex">Tourbillon</span><kbd>1</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="source" data-i18n-attr="aria-label:source" aria-checked="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>
+        <span data-i18n="source">Source</span><kbd>2</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="reef" data-i18n-attr="aria-label:reef" aria-checked="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V11M12 14l-4-4V6M12 12l4-4V4M8 6l-2-2M16 8l2-1"/><path d="M6 21h12"/></svg>
+        <span data-i18n="reef">Récif</span><kbd>3</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="beacon" data-i18n-attr="aria-label:beacon" aria-checked="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/></svg>
+        <span data-i18n="beacon">Balise</span><kbd>4</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="move" data-i18n-attr="aria-label:move" aria-checked="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+        <span data-i18n="move">Déplacer</span><kbd>5</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="erase" data-i18n-attr="aria-label:erase" aria-checked="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span data-i18n="erase">Effacer</span><kbd>6</kbd>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="panel" id="panel" tabindex="-1" data-i18n-attr="aria-label:panel.label">
+    <button type="button" class="panel__close" id="panel-close" data-i18n-attr="aria-label:panel.close">×</button>
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="log">Carnet de bord</h2>
+      <dl class="metrics" id="metrics">
+        <div><dt data-i18n="particles">Particules</dt><dd data-metric="particles">—</dd></div>
+        <div><dt data-i18n="speed">Vitesse moy.</dt><dd data-metric="speed">—</dd></div>
+        <div><dt data-i18n="nodes">Éléments</dt><dd data-metric="nodes">—</dd></div>
+        <div><dt data-i18n="notes">Passages captés</dt><dd data-metric="notes">0</dd></div>
+        <div><dt data-i18n="time">Temps simulé</dt><dd data-metric="time">—</dd></div>
+        <div><dt data-i18n="fps">Images/s</dt><dd data-metric="fps">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="atlas">Atlas</h2>
+      <p class="panel__lede" data-i18n="atlas.lede">Six compositions à écouter, à démonter, à détourner.</p>
+      <ul class="atlas" id="atlas" data-i18n-attr="aria-label:atlas.label"></ul>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="settings">Réglages</h2>
+      <label class="slider">
+        <span><span data-i18n="set.speed">Vitesse du courant</span> <output id="speed-out">1.0×</output></span>
+        <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+      </label>
+      <label class="slider">
+        <span><span data-i18n="set.turb">Turbulence</span> <output id="turb-out">0.45</output></span>
+        <input type="range" id="turbulence" min="0" max="1" step="0.01" value="0.45">
+      </label>
+      <label class="slider">
+        <span><span data-i18n="set.count">Plancton</span> <output id="count-out">1800</output></span>
+        <input type="range" id="count" min="200" max="5000" step="100" value="1800">
+      </label>
+      <label class="slider">
+        <span><span data-i18n="set.trail">Persistance des traînées</span> <output id="trail-out">0.95</output></span>
+        <input type="range" id="trail" min="0.6" max="0.99" step="0.01" value="0.95">
+      </label>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="sound">Son</h2>
+      <div class="row">
+        <button type="button" class="btn btn--toggle" id="sound" aria-pressed="false"><span data-i18n="sound.on">Activer le son</span> <kbd>M</kbd></button>
+      </div>
+      <label class="slider">
+        <span><span data-i18n="volume">Volume</span> <output id="vol-out">60 %</output></span>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.6">
+      </label>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="dive">Plongée</h2>
+      <div class="row">
+        <button type="button" class="btn" id="play" aria-pressed="true"><span data-i18n="pause">Pause</span> <kbd>Space</kbd></button>
+        <button type="button" class="btn" id="respawn"><span data-i18n="respawn">Relâcher le plancton</span> <kbd>R</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="undo"><span data-i18n="undo">Annuler</span> <kbd>Ctrl Z</kbd></button>
+        <button type="button" class="btn" id="redo" data-i18n="redo">Rétablir</button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="immersive" aria-pressed="false"><span data-i18n="immersive">Immersion</span> <kbd>F</kbd></button>
+        <button type="button" class="btn" id="photo"><span data-i18n="photo">Photographier</span> <kbd>P</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="clear" data-i18n="clear">Vider l’océan</button>
+        <button type="button" class="btn btn--ghost" id="help-btn"><span data-i18n="help">Aide</span> <kbd>?</kbd></button>
+      </div>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title" data-i18n="share">Partager</h2>
+      <div class="row">
+        <button type="button" class="btn" id="export" data-i18n="export">Exporter .json</button>
+        <label class="btn" for="import-file" data-i18n="import">Importer…</label>
+        <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden">
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="link" data-i18n="link">Copier un lien</button>
+      </div>
+    </section>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="help" id="help" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 id="help-title" data-i18n="help.title">Bienvenue à bord</h2>
+      <p class="help__lede" data-i18n="help.lede"></p>
+      <ul class="help__steps">
+        <li data-i18n="help.vortex"></li>
+        <li data-i18n="help.source"></li>
+        <li data-i18n="help.reef"></li>
+        <li data-i18n="help.beacon"></li>
+      </ul>
+      <p data-i18n="help.move"></p>
+      <p class="help__keys" data-i18n="help.keys"></p>
+      <p class="help__note" data-i18n="help.note"></p>
+      <div class="row row--end">
+        <button class="btn btn--primary" value="close" autofocus data-i18n="help.go">Plonger</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

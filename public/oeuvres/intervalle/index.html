@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="INTERVALLE — two programs written separately, ORDRE (CODEX) and DÉTOUR (CLAUDE), share one sheet without having to agree. Their refusals and the turns they give up are written in the margins.">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#e6dfd0">
+  <title>INTERVALLE</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f3eee3'/%3E%3Cpath d='M5 22h11' stroke='%231f3a5f' stroke-width='2.6' stroke-linecap='round'/%3E%3Cpath d='M17 10c4 0 7 4 5 8s2 6 5 4' fill='none' stroke='%238a5a2b' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../../shared/rotate.css">
+  <link rel="stylesheet" href="./sheet.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="bar__home" href="../../" data-i18n-attr="aria-label:home.label"><span aria-hidden="true">←</span> <span data-i18n="home">Exposition</span></a>
+    <div class="bar__title">
+      <h1 class="title">Intervalle</h1>
+      <p class="lede" data-i18n="lede">Deux programmes écrits séparément se partagent cette feuille. Aucun ne peut écrire sur l’encre ou le blanc de l’autre.</p>
+    </div>
+    <ul class="legend" data-i18n-attr="aria-label:legend.label">
+      <li><svg viewBox="0 0 28 12" aria-hidden="true"><path d="M2 6h24" stroke="var(--a)" stroke-width="2.4" stroke-linecap="round"/></svg><span><b class="ink-a">ORDRE</b> <span data-i18n="legend.a">· CODEX</span></span></li>
+      <li><svg viewBox="0 0 28 12" aria-hidden="true"><path d="M2 9c5-9 9 3 13-3s8-1 11-3" fill="none" stroke="var(--b)" stroke-width="2.2" stroke-linecap="round"/></svg><span><b class="ink-b">DÉTOUR</b> <span data-i18n="legend.b">· CLAUDE</span></span></li>
+      <li><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round"/></svg><span data-i18n="legend.refusal">refus</span></li>
+      <li><svg viewBox="0 0 14 12" aria-hidden="true"><path d="M1 11l5-10M5 11l5-10M9 11l4-8" stroke="var(--muted)" stroke-width="1.1"/></svg><span data-i18n="legend.void">blanc revendiqué</span></li>
+    </ul>
+    <div class="bar__lang" id="lang"></div>
+  </header>
+
+  <main class="stage">
+    <aside class="margin margin--a" data-i18n-attr="aria-label:margin.a">
+      <h2 class="margin__title"><span class="ink-a">ORDRE</span> <small data-i18n="who.a">construit un cadre</small></h2>
+      <ol class="margin__notes" id="notes-a" aria-live="off"></ol>
+      <p class="margin__count" id="count-a"></p>
+    </aside>
+
+    <figure class="sheet">
+      <canvas id="sheet" width="1200" height="800" role="img" aria-describedby="status" data-i18n-attr="aria-label:sheet.label"></canvas>
+      <figcaption class="status" id="status" aria-live="polite"></figcaption>
+    </figure>
+
+    <aside class="margin margin--b" data-i18n-attr="aria-label:margin.b">
+      <h2 class="margin__title"><span class="ink-b">DÉTOUR</span> <small data-i18n="who.b">courbe, réserve du blanc</small></h2>
+      <ol class="margin__notes" id="notes-b" aria-live="off"></ol>
+      <p class="margin__count" id="count-b"></p>
+    </aside>
+  </main>
+
+  <footer class="deck">
+    <nav class="actions" data-i18n-attr="aria-label:actions.label">
+      <button type="button" id="pause" aria-pressed="false"><span class="label" data-i18n="pause">Suspendre</span> <kbd data-i18n="key.space">Espace</kbd></button>
+      <button type="button" id="again"><span class="label" data-i18n="again">Une autre rencontre</span> <kbd>N</kbd></button>
+      <button type="button" id="keep"><span class="label" data-i18n="keep">Emporter la feuille</span> <kbd>S</kbd></button>
+    </nav>
+    <section class="frieze" aria-labelledby="frieze-title">
+      <h2 class="frieze__title" id="frieze-title"><span data-i18n="frieze">Rencontres passées</span> <button type="button" id="forget" class="frieze__forget" data-i18n="forget">effacer</button></h2>
+      <ol class="frieze__list" id="frieze"></ol>
+    </section>
+  </footer>
+
+  <script type="module" src="./sheet.js"></script>
+</body>
+</html>

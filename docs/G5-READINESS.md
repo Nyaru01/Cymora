@@ -39,3 +39,13 @@ Nocturne : tous les boutons principaux contrôlés à 667×375 font 44 px de hau
 Captures publiques sélectionnées : docs/captures/g5-codex/ (réduites pour le dépôt) et docs/captures/g5-claude/. Les captures intégrales restent dans .runtime/qa/g5-captures/. Aucun moteur ni algorithme n’est accéléré artificiellement pour ces captures.
 
 Exports Nocturne réels de cette édition : JSON 8 605 octets, PNG 847 984 octets, WebM 381 139 octets, rangés dans .runtime/qa/. Les tailles dépendent de cet état de test, pas d’une promesse de taille fixe.
+
+## Résultats de publication déjà vérifiés
+
+- Dépôt public : https://github.com/Nyaru01/Duo . Branche main et tags historiques assainis transférés sans force push.
+- Première CI : https://github.com/Nyaru01/Duo/actions/runs/45428902748 — succès sur Ubuntu/Windows avec Node 22 et 24.
+- Copie de publication isolée : 77/77 tests avant portabilité ; 78/78 dans le dossier original après ajout du contrôle de sous-chemins.
+- Scan des quatre snapshots publics : 39 blobs textuels historiques examinés, aucune correspondance sensible ; auteurs des quatre commits non personnels.
+- La copie de publication n’a pas pour parent un commit privé. Les tags privés locaux n’ont pas été déplacés.
+
+La vérification du déploiement Pages sera inscrite après contrôle effectif de son URL HTTPS ; elle ne sera pas confondue avec un déploiement Railway.

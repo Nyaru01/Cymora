@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="PELAGIC — composez un océan bioluminescent : placez des courants, des récifs et des balises qui chantent.">
+  <meta name="color-scheme" content="dark">
+  <title>PELAGIC — le jardin des courants</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23060b1a'/%3E%3Cpath d='M6 20c4-8 8 4 12-4s6 2 8-2' fill='none' stroke='%235fffd0' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <a class="skip" href="#panel">Aller aux commandes</a>
+
+  <header class="masthead">
+    <div class="brand">
+      <h1 class="brand__name">Pelagic</h1>
+      <p class="brand__tag">le jardin des courants</p>
+    </div>
+    <p class="brand__log" aria-live="polite" id="log">Instrument prêt. Choisissez un outil, puis touchez l'océan.</p>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="porthole" id="porthole">
+      <canvas id="ocean" aria-label="Océan simulé. Cliquez pour placer l'élément de l'outil actif." role="img"></canvas>
+      <div class="porthole__hint" id="hint" hidden></div>
+      <div class="porthole__error" id="fatal" role="alert" hidden></div>
+      <section class="inspector" id="inspector" aria-label="Élément sélectionné" hidden>
+        <header class="inspector__head">
+          <h2 class="inspector__title" id="insp-title">Élément</h2>
+          <button type="button" class="inspector__close" id="insp-close" aria-label="Fermer l'inspecteur">×</button>
+        </header>
+        <p class="inspector__desc" id="insp-desc"></p>
+        <label class="slider">
+          <span><span id="insp-label">Force</span> <output id="insp-out">1.0</output></span>
+          <input type="range" id="insp-strength" min="-2" max="2" step="0.1" value="1">
+        </label>
+        <div class="row">
+          <button type="button" class="btn" id="insp-flip">Inverser</button>
+          <button type="button" class="btn btn--danger" id="insp-delete">Retirer</button>
+        </div>
+      </section>
+      <button type="button" class="btn porthole__exit" id="immersive-exit" hidden>Quitter l'immersion <kbd>Échap</kbd></button>
+    </div>
+
+    <canvas id="sonar" class="sonar" aria-hidden="true"></canvas>
+  </main>
+
+  <nav class="tools" aria-label="Outils">
+    <div class="tools__group" role="radiogroup" aria-label="Outil actif" id="tools">
+      <button type="button" class="tool" role="radio" data-tool="vortex" aria-checked="true" title="Tourbillon (1)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12m-1.5 0a1.5 1.5 0 1 0 3 0a3.5 3.5 0 1 0-7 0a5.5 5.5 0 1 0 11 0a7.5 7.5 0 1 0-15 0"/></svg>
+        <span>Tourbillon</span><kbd>1</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="source" aria-checked="false" title="Source (2)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>
+        <span>Source</span><kbd>2</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="reef" aria-checked="false" title="Récif (3)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V11M12 14l-4-4V6M12 12l4-4V4M8 6l-2-2M16 8l2-1"/><path d="M6 21h12"/></svg>
+        <span>Récif</span><kbd>3</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="beacon" aria-checked="false" title="Balise sonore (4)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/></svg>
+        <span>Balise</span><kbd>4</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="move" aria-checked="false" title="Déplacer / régler (5)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+        <span>Déplacer</span><kbd>5</kbd>
+      </button>
+      <button type="button" class="tool" role="radio" data-tool="erase" aria-checked="false" title="Effacer un élément (6)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span>Effacer</span><kbd>6</kbd>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="panel" id="panel" aria-label="Carnet de bord">
+    <section class="panel__section">
+      <h2 class="panel__title">Carnet de bord</h2>
+      <dl class="metrics" id="metrics">
+        <div><dt>Particules</dt><dd data-metric="particles">—</dd></div>
+        <div><dt>Vitesse moy.</dt><dd data-metric="speed">—</dd></div>
+        <div><dt>Éléments</dt><dd data-metric="nodes">—</dd></div>
+        <div><dt>Passages captés</dt><dd data-metric="notes">0</dd></div>
+        <div><dt>Temps simulé</dt><dd data-metric="time">—</dd></div>
+        <div><dt>Images/s</dt><dd data-metric="fps">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Atlas</h2>
+      <p class="panel__lede">Six compositions à écouter, à démonter, à détourner.</p>
+      <ul class="atlas" id="atlas" aria-label="Compositions de l'Atlas"></ul>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Réglages</h2>
+      <label class="slider">
+        <span>Vitesse du courant <output id="speed-out">1.0×</output></span>
+        <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+      </label>
+      <label class="slider">
+        <span>Turbulence <output id="turb-out">0.45</output></span>
+        <input type="range" id="turbulence" min="0" max="1" step="0.01" value="0.45">
+      </label>
+      <label class="slider">
+        <span>Plancton <output id="count-out">1800</output></span>
+        <input type="range" id="count" min="200" max="5000" step="100" value="1800">
+      </label>
+      <label class="slider">
+        <span>Persistance des traînées <output id="trail-out">0.95</output></span>
+        <input type="range" id="trail" min="0.6" max="0.99" step="0.01" value="0.95">
+      </label>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Son</h2>
+      <div class="row">
+        <button type="button" class="btn btn--toggle" id="sound" aria-pressed="false">Activer le son <kbd>M</kbd></button>
+      </div>
+      <label class="slider">
+        <span>Volume <output id="vol-out">60 %</output></span>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.6">
+      </label>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Plongée</h2>
+      <div class="row">
+        <button type="button" class="btn" id="play" aria-pressed="true">Pause <kbd>Espace</kbd></button>
+        <button type="button" class="btn" id="respawn">Relâcher le plancton <kbd>R</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="undo" title="Annuler (Ctrl+Z)">Annuler <kbd>Ctrl Z</kbd></button>
+        <button type="button" class="btn" id="redo" title="Rétablir (Ctrl+Maj+Z)">Rétablir</button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="immersive" aria-pressed="false">Immersion <kbd>F</kbd></button>
+        <button type="button" class="btn" id="photo">Photographier <kbd>P</kbd></button>
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="clear">Vider l'océan</button>
+        <button type="button" class="btn btn--ghost" id="help-btn">Aide <kbd>?</kbd></button>
+      </div>
+    </section>
+
+    <section class="panel__section">
+      <h2 class="panel__title">Partager</h2>
+      <div class="row">
+        <button type="button" class="btn" id="export">Exporter .json</button>
+        <label class="btn" for="import-file">Importer…</label>
+        <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden">
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost" id="link">Copier un lien</button>
+      </div>
+    </section>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="help" id="help" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 id="help-title">Bienvenue à bord</h2>
+      <p class="help__lede">Pelagic est un jardin de courants. Des milliers de grains de plancton lumineux dérivent dans un champ de forces que <em>vous</em> composez.</p>
+      <ol class="help__steps">
+        <li><strong>Tourbillon</strong> — fait tourner le plancton. Molette pour changer la force ; une force négative tourne dans l'autre sens.</li>
+        <li><strong>Source</strong> — repousse le plancton (force négative : l'aspire).</li>
+        <li><strong>Récif</strong> — obstacle que le courant contourne.</li>
+        <li><strong>Balise</strong> — chante chaque fois que du plancton la traverse. Plus elle est haute, plus la note est aiguë ; à gauche ou à droite, elle sonne dans l'oreille correspondante.</li>
+      </ol>
+      <p>Avec <strong>Déplacer</strong>, faites glisser un élément ou réglez sa force à la molette. Clic droit ou <strong>Effacer</strong> pour le retirer.</p>
+      <p class="help__keys"><kbd>1</kbd>–<kbd>6</kbd> outils · <kbd>Espace</kbd> pause · <kbd>R</kbd> plancton · <kbd>M</kbd> son · <kbd>F</kbd> immersion · <kbd>P</kbd> photo · <kbd>Ctrl</kbd>+<kbd>Z</kbd> annuler · <kbd>?</kbd> aide</p>
+      <p class="help__note">Simulation artistique, sans valeur de prévision océanographique. Tout fonctionne hors ligne, rien ne quitte votre machine.</p>
+      <div class="row row--end">
+        <button class="btn btn--primary" value="close" autofocus>Plonger</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

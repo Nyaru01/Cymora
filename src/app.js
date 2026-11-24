@@ -1,21 +1,29 @@
-// PELAGIC — interface, rendu Canvas et interactions.
-// Auteur : CLAUDE. Le moteur (src/engine.js, CODEX) reste la seule source de
-// vérité physique ; ce module dessine, écoute et chante.
+// PELAGIC Nocturne — orchestration de l'interface.
+// Auteur : CLAUDE. Le moteur (engine.js) et la partition (score.js) de CODEX
+// restent les sources de vérité ; ce module relie rendu (render.js), musique
+// (audio.js, tide.js), frise (timeline.js) et gestes.
 
 import {
-  BEACON_RADIUS, HIT_RADIUS, LABELS, clamp, crossings, describeNode, fitSquare,
-  formatTime, fromBase64Url, nodeAt, nudgeStrength, screenToWorld, speedBucket, toBase64Url,
+  HIT_RADIUS, LABELS, clamp, describeNode, fitSquare,
+  formatTime, fromBase64Url, nodeAt, nudgeStrength, screenToWorld, toBase64Url,
 } from './ui.js';
-import { createAudio, noteName, pitchForDepth } from './audio.js';
+import {
+  SCALE_LABELS, VOICES, VOICE_LABELS, canonicalScale, canonicalVoice, createAudio, noteName, pitchForDepth,
+} from './audio.js';
+import { createObjectView, createRenderer } from './render.js';
+import { beaconRadius, createConductor } from './tide.js';
+import { createTimeline } from './timeline.js';
+import { createNocturne } from './nocturne.js';
 
 const STORE_KEY = 'pelagic.session.v1';
+const SCORE_KEY = 'pelagic.score.v2';
 const PREFS_KEY = 'pelagic.prefs.v1';
-const SEEN_KEY = 'pelagic.seen.v1';
+const SEEN_KEY = 'pelagic.seen.v2';
 const SONAR_WINDOW = 14; // secondes visibles sur le sonar
-const BEACON_COOLDOWN = 0.14; // secondes entre deux notes d'une même balise
+const STEP = 1 / 60; // pas de simulation fixe
+const TOOLS = ['hand', 'vortex', 'source', 'reef', 'beacon', 'move', 'erase'];
 
 // Palette des traînées : abysses → menthe → écume.
-const TRAIL_COLORS = ['#1b5d9c', '#2a8fd0', '#3fc4e6', '#5fffd0', '#b8ffe9', '#ffffff'];
 const NODE_COLORS = {
   vortex: ['#5fffd0', '#b59cff'],
   source: ['#4cc9ff', '#ffd27a'],
@@ -50,13 +58,15 @@ function showFatal(title, detail) {
 
 async function main() {
   let engine;
+  let score;
   try {
     engine = await import('./engine.js');
+    score = await import('./score.js');
   } catch (err) {
-    showFatal('Le moteur ne répond pas', `Impossible de charger src/engine.js (${err.message}). Lancez l'application avec START.ps1.`);
+    showFatal('Le moteur ne répond pas', `Impossible de charger le moteur (${err.message}). Lancez l'application avec START.ps1.`);
     return;
   }
-  const app = new Pelagic(engine);
+  const app = new Pelagic(engine, score);
   app.start();
   try {
     const atlas = await import('./atlas.js');
@@ -70,18 +80,29 @@ async function main() {
 }
 
 class Pelagic {
-  constructor(engine) {
+  constructor(engine, score) {
     this.E = engine;
+    this.S = score;
     this.canvas = $('#ocean');
     this.ctx = this.canvas.getContext('2d', { alpha: false });
-    this.trail = document.createElement('canvas');
-    this.tctx = this.trail.getContext('2d');
+    this.renderer = createRenderer();
+    this.objectView = createObjectView();
+    this.accumulator = 0;
     this.sonar = $('#sonar');
     this.sctx = this.sonar.getContext('2d');
     this.audio = createAudio();
 
     this.settings = { ...engine.DEFAULTS };
-    this.tool = 'vortex';
+    this.tool = 'hand';
+    this.mode = 'explore';
+    this.score = null;
+    this.movement = 0;
+    this.transport = { beat: 0, playing: false, loop: true, ended: false };
+    this.freeBeat = 0; // horloge de marée en mode Explorer
+    this.conductor = createConductor(pitchForDepth);
+    this.flashAcc = 0;
+    this.hand = null; // geste Main en cours
+    this.recStart = 0;
     this.paused = false;
     this.trailPersistence = 0.95;
     this.volume = 0.6;
@@ -93,8 +114,7 @@ class Pelagic {
     this.cursor = null; // curseur clavier {x,y}
     this.notes = 0;
     this.sonarEvents = []; // { t, freq, pan }
-    this.flashes = new Map(); // id balise → instant de la dernière note
-    this.lastNote = new Map();
+    this.flashes = new Map(); // clé balise → instant de la dernière note
     this.clock = 0; // temps réel écoulé (s)
     this.fps = { frames: 0, acc: 0, value: 0 };
     this.saveTimer = 0;
@@ -116,6 +136,7 @@ class Pelagic {
         const p = JSON.parse(prefs);
         if (Number.isFinite(p.trail)) this.trailPersistence = clamp(p.trail, 0.6, 0.99);
         if (Number.isFinite(p.volume)) this.volume = clamp(p.volume, 0, 1);
+        if (p.mode === 'compose') this.wantCompose = true;
       } catch { /* préférences corrompues : ignorées */ }
     }
 
@@ -146,18 +167,60 @@ class Pelagic {
     return this.E.createWorld(42);
   }
 
+  restoreScore() {
+    const saved = safeStorage('get', SCORE_KEY);
+    if (!saved) return;
+    try {
+      this.score = this.S.deserializeScore(saved);
+    } catch {
+      safeStorage('del', SCORE_KEY);
+    }
+  }
+
   persist() {
     try {
       safeStorage('set', STORE_KEY, this.E.serializeWorld(this.world, this.settings));
     } catch { /* réglages hors limites : on ne sauvegarde pas un état invalide */ }
-    safeStorage('set', PREFS_KEY, JSON.stringify({ trail: this.trailPersistence, volume: this.volume }));
+    if (this.score) {
+      try {
+        safeStorage('set', SCORE_KEY, this.S.serializeScore(this.score));
+      } catch { /* partition invalide : non sauvegardée */ }
+    }
+    safeStorage('set', PREFS_KEY, JSON.stringify({ trail: this.trailPersistence, volume: this.volume, mode: this.mode }));
   }
 
   schedulePersist() {
     this.saveTimer = 0.6;
+    this.captureIfComposing();
+  }
+
+  /** En Composer, toute édition (lecture arrêtée) s'écrit dans le mouvement courant. */
+  captureIfComposing() {
+    if (this.mode !== 'compose' || !this.score || this.transport.playing) return;
+    try {
+      this.S.captureMovement(this.score, this.movement, this.world, this.settings);
+      this.timeline?.render(this.timelineState());
+    } catch (err) {
+      this.toast(`Mouvement non enregistré : ${err.message}`, 'error');
+    }
   }
 
   start() {
+    this.restoreScore();
+    this.timeline = createTimeline($('#score'), {
+      select: (i) => this.selectMovement(i),
+      togglePlay: () => this.toggleTransport(),
+      toggleLoop: () => {
+        this.transport = { ...this.transport, loop: !this.transport.loop };
+        this.timeline.render(this.timelineState());
+      },
+      copyNext: () => this.copyToNext(),
+      setBars: (n) => this.setBars(n),
+      rename: (i, name) => this.renameMovement(i, name),
+      demo: () => this.playNocturne(),
+    });
+    $('#nocturne').addEventListener('click', () => this.playNocturne());
+    this.bindModes();
     this.bindControls();
     this.bindInspector();
     this.bindCanvas();
@@ -174,6 +237,8 @@ class Pelagic {
       safeStorage('set', SEEN_KEY, '1');
       this.openHelp();
     }
+    this.setTool(this.tool, { quiet: true });
+    if (this.wantCompose) this.setMode('compose', { quiet: true });
 
     this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (this.reducedMotion && !this.paused) {
@@ -199,14 +264,25 @@ class Pelagic {
   tick(dt) {
     this.clock += dt;
     if (!this.paused) {
-      // Sous-pas : le moteur borne dt à 0,05 s ; on découpe pour rester fidèle.
-      let remaining = dt;
-      while (remaining > 1e-6) {
-        const step = Math.min(0.05, remaining);
-        this.E.stepWorld(this.world, step, this.settings);
-        this.listenBeacons();
-        remaining -= step;
+      // Pas fixe (1/60 s) : la simulation est identique quelle que soit la
+      // cadence d'affichage. Au-delà de 6 pas en retard, on lâche du temps
+      // plutôt que de geler l'onglet.
+      this.accumulator = Math.min(this.accumulator + dt, STEP * 6);
+      while (this.accumulator >= STEP) {
+        this.simulate();
+        this.accumulator -= STEP;
       }
+      if (this.flashAcc) {
+        // Scintillement : densité proportionnelle aux flashes, normalisée par la population.
+        this.audio.shimmer(Math.min(1, this.flashAcc / Math.max(60, this.world.p.n * 0.01)));
+        this.flashAcc = 0;
+      }
+    }
+    if (this.mode === 'compose') this.timeline.tick({ score: this.score, transport: this.transport, phase: this.phase() });
+    if (this.audio.recording) {
+      const t = formatTime(this.clock - this.recStart);
+      const el = $('#rec-time');
+      if (el.textContent !== t) el.textContent = t;
     }
     this.render(dt);
     this.renderSonar();
@@ -229,21 +305,39 @@ class Pelagic {
     }
   }
 
-  listenBeacons() {
-    const beacons = this.world.nodes.filter((n) => n.type === 'beacon');
-    if (!beacons.length) return;
-    for (const b of beacons) {
-      const hits = crossings(this.world.particles, b, BEACON_RADIUS * (0.6 + Math.abs(b.strength) * 0.4));
-      if (!hits) continue;
-      const last = this.lastNote.get(b.id) ?? -Infinity;
-      if (this.clock - last < BEACON_COOLDOWN) continue;
-      this.lastNote.set(b.id, this.clock);
-      const freq = pitchForDepth(b.y);
-      const velocity = clamp(0.25 + hits * 0.12, 0.25, 1) * clamp(Math.abs(b.strength), 0.2, 2) / 1.2;
-      const pan = (b.x - 0.5) * 1.6;
-      this.audio.chime(freq, velocity, pan);
-      this.flashes.set(b.id, this.clock);
-      this.sonarEvents.push({ t: this.clock, freq, pan, v: velocity });
+  /** Un pas fixe : transport de la partition, moteur, lumière, balises. */
+  simulate() {
+    let settings = this.settings;
+    let beat;
+    if (this.mode === 'compose' && this.transport.playing) {
+      this.transport = this.S.advanceTransport(this.transport, STEP, this.score);
+      const sample = this.S.sampleScore(this.score, this.transport.beat);
+      this.S.applySample(this.world, sample);
+      settings = { ...this.settings, ...sample.settings, count: this.settings.count, quantize: this.settings.quantize };
+      this.liveSettings = settings;
+      beat = this.transport.beat;
+      if (!this.transport.playing) this.onTransportEnded();
+    } else {
+      this.freeBeat += (STEP * (settings.tempo ?? 84)) / 60;
+      beat = this.freeBeat;
+    }
+    this.E.stepWorld(this.world, STEP, settings);
+    this.flashAcc += this.world.flashes ?? 0;
+    this.listenBeacons(beat, settings);
+  }
+
+  listenBeacons(beat, settings) {
+    const events = this.conductor.listen(this.world.nodes, this.view(), {
+      beat,
+      clock: this.clock,
+      tempo: settings.tempo ?? 84,
+      scale: settings.scale ?? 'pentatonic',
+      quantize: settings.quantize !== false,
+    });
+    for (const e of events) {
+      this.audio.note(e.freq, e);
+      this.flashes.set(e.key, this.clock + e.delay);
+      this.sonarEvents.push({ t: this.clock + e.delay, freq: e.freq, pan: e.pan, v: e.velocity, voice: e.voice });
       this.notes += 1;
     }
     const horizon = this.clock - SONAR_WINDOW;
@@ -262,8 +356,7 @@ class Pelagic {
     if (this.canvas.width !== W || this.canvas.height !== H) {
       this.canvas.width = W;
       this.canvas.height = H;
-      this.trail.width = W;
-      this.trail.height = H;
+      this.resizeRenderer(W, H);
     }
     const margin = (w < 500 ? 22 : 38) * dpr;
     this.rect = fitSquare(W, H, margin);
@@ -274,6 +367,28 @@ class Pelagic {
       this.sonar.height = sh;
     }
     this.backdrop = null; // à régénérer
+  }
+
+  /** Particules au format SoA : celui du moteur V2 s'il existe, sinon adapté. */
+  view() {
+    return this.world.p ?? this.objectView(this.world.particles);
+  }
+
+  resizeRenderer(W, H) {
+    try {
+      this.renderer.resize(W, H);
+    } catch (err) {
+      this.fallbackRenderer(err.message);
+      this.renderer.resize(W, H);
+    }
+  }
+
+  fallbackRenderer(reason) {
+    if (this.renderer.kind === '2d') return;
+    console.warn(`Rendu Canvas 2D (${reason}).`);
+    this.renderer = createRenderer({ prefer: '2d' });
+    this.renderer.resize(this.canvas.width, this.canvas.height);
+    this.say('Rendu simplifié activé : WebGL2 est indisponible sur cet appareil.');
   }
 
   /** Fond statique (graduations, grille) mis en cache. */
@@ -337,59 +452,29 @@ class Pelagic {
   }
 
   render() {
-    const { ctx, tctx, rect } = this;
+    const { ctx, rect } = this;
     const { x: ox, y: oy, size } = rect;
     const d = this.dpr;
     if (!this.backdrop) this.buildBackdrop();
 
-    // Traînées : on efface progressivement puis on ajoute les segments récents.
-    tctx.globalCompositeOperation = 'destination-out';
-    tctx.fillStyle = `rgba(0,0,0,${(1 - this.trailPersistence).toFixed(3)})`;
-    tctx.fillRect(0, 0, this.trail.width, this.trail.height);
-    tctx.globalCompositeOperation = 'lighter';
-    tctx.lineWidth = 1.15 * d;
-    tctx.lineCap = 'round';
-
-    if (!this.paused) {
-      const buckets = TRAIL_COLORS.map(() => []);
-      for (const p of this.world.particles) {
-        if (p.px === p.x && p.py === p.y) continue;
-        buckets[speedBucket(p.speed, TRAIL_COLORS.length)].push(p);
-      }
-      tctx.save();
-      tctx.beginPath();
-      tctx.rect(ox, oy, size, size);
-      tctx.clip();
-      buckets.forEach((list, i) => {
-        if (!list.length) return;
-        tctx.strokeStyle = TRAIL_COLORS[i];
-        tctx.globalAlpha = 0.55 + i * 0.07;
-        tctx.beginPath();
-        for (const p of list) {
-          // La vitesse du moteur est faible : on allonge visuellement le segment.
-          const ax = ox + p.px * size;
-          const ay = oy + p.py * size;
-          const bx = ox + p.x * size;
-          const by = oy + p.y * size;
-          const ex = bx + (bx - ax) * 0.8;
-          const ey = by + (by - ay) * 0.8;
-          tctx.moveTo(ax, ay);
-          tctx.lineTo(ex === ax && ey === ay ? ex + 0.5 : ex, ey);
-        }
-        tctx.stroke();
-      });
-      tctx.restore();
-      tctx.globalAlpha = 1;
+    const view = this.view();
+    if (this.renderer.lost) this.fallbackRenderer('contexte WebGL perdu');
+    try {
+      this.renderer.draw(view, { rect, persistence: this.trailPersistence, dpr: d, paused: this.paused });
+    } catch (err) {
+      this.fallbackRenderer(err.message);
     }
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.backdrop, 0, 0);
-    ctx.drawImage(this.trail, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.renderer.canvas, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
 
     // Plancton au repos (pause) : points fins pour garder la scène lisible.
     if (this.paused) {
       ctx.fillStyle = 'rgba(95, 255, 208, 0.55)';
-      for (const p of this.world.particles) ctx.fillRect(ox + p.x * size, oy + p.y * size, d, d);
+      for (let i = 0; i < view.n; i++) ctx.fillRect(ox + view.x[i] * size, oy + view.y[i] * size, d, d);
     }
 
     for (const n of this.world.nodes) this.drawNode(n);
@@ -408,8 +493,11 @@ class Pelagic {
     const isHover = this.hover?.id === n.id || this.drag?.id === n.id || this.selectedId === n.id;
     const r = (10 + mag * 5) * d;
 
+    const A = clamp(n.opacity ?? 1, 0, 1);
+    if (A < 0.02) return;
     ctx.save();
     ctx.translate(cx, cy);
+    ctx.globalAlpha = A;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = 1.5 * d;
@@ -420,12 +508,12 @@ class Pelagic {
       const dir = s >= 0 ? -1 : 1;
       ctx.rotate(dir * t * (0.6 + mag));
       for (let i = 0; i < 3; i++) {
-        ctx.globalAlpha = 0.9 - i * 0.25;
+        ctx.globalAlpha = A * (0.9 - i * 0.25);
         ctx.beginPath();
         ctx.arc(0, 0, r * (0.45 + i * 0.32), i * 2.1, i * 2.1 + Math.PI * 1.25);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A * (1);
       ctx.beginPath();
       ctx.arc(0, 0, 2 * d, 0, Math.PI * 2);
       ctx.fill();
@@ -433,12 +521,12 @@ class Pelagic {
       for (let i = 0; i < 3; i++) {
         let phase = (t * 0.5 + i / 3) % 1;
         if (s < 0) phase = 1 - phase;
-        ctx.globalAlpha = (1 - phase) * 0.9;
+        ctx.globalAlpha = A * ((1 - phase) * 0.9);
         ctx.beginPath();
         ctx.arc(0, 0, r * (0.3 + phase * 1.2), 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A * (1);
       ctx.beginPath();
       ctx.arc(0, 0, 3 * d, 0, Math.PI * 2);
       ctx.fill();
@@ -452,28 +540,28 @@ class Pelagic {
         ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
       }
       ctx.closePath();
-      ctx.globalAlpha = 0.18;
+      ctx.globalAlpha = A * (0.18);
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A * (1);
       ctx.stroke();
     } else if (n.type === 'beacon') {
-      const zone = BEACON_RADIUS * (0.6 + mag * 0.4) * rect.size;
-      const since = this.clock - (this.flashes.get(n.id) ?? -10);
-      const glow = Math.max(0, 1 - since / 0.6);
+      const zone = beaconRadius(n) * rect.size;
+      const since = this.clock - (this.flashes.get(n.key ?? n.id) ?? -10);
+      const glow = since < 0 ? 0 : Math.max(0, 1 - since / 0.6);
       ctx.setLineDash([3 * d, 4 * d]);
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = A * (0.45);
       ctx.beginPath();
       ctx.arc(0, 0, zone, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
       if (glow > 0) {
-        ctx.globalAlpha = glow * 0.8;
+        ctx.globalAlpha = A * (glow * 0.8);
         ctx.lineWidth = 2 * d;
         ctx.beginPath();
         ctx.arc(0, 0, zone * (1 + (1 - glow) * 0.8), 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = A * (1);
       ctx.beginPath();
       ctx.arc(0, 0, (3.5 + glow * 3) * d, 0, Math.PI * 2);
       ctx.fill();
@@ -481,13 +569,13 @@ class Pelagic {
       ctx.font = `${10 * d}px Consolas, monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.globalAlpha = 0.75;
-      ctx.fillText(noteName(pitchForDepth(n.y)), 0, zone + 4 * d);
+      ctx.globalAlpha = A * (0.75);
+      ctx.fillText(`${noteName(pitchForDepth(n.y, this.currentSettings().scale))} · ${VOICE_LABELS[canonicalVoice(n.voice)]}`, 0, zone + 4 * d);
     }
 
     if (isHover) {
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = A * (0.9);
       ctx.strokeStyle = '#e6f2ff';
       ctx.lineWidth = 1 * d;
       ctx.setLineDash([2 * d, 3 * d]);
@@ -531,14 +619,16 @@ class Pelagic {
     g.stroke();
 
     const minF = Math.log2(110);
-    const maxF = Math.log2(110 * 2 ** (34 / 12));
+    const maxF = Math.log2(880);
+    const voiceColor = { glass: '#5fffd0', bell: '#ffd27a', pluck: '#4cc9ff', breath: '#b59cff' };
     for (const e of this.sonarEvents) {
       const age = this.clock - e.t;
+      if (age < 0) continue;
       const x = c.width - (age / SONAR_WINDOW) * c.width;
       const y = c.height - 6 * d - ((Math.log2(e.freq) - minF) / (maxF - minF)) * (c.height - 12 * d);
       const alpha = 1 - age / SONAR_WINDOW;
       g.globalAlpha = alpha;
-      g.fillStyle = e.pan < -0.2 ? '#4cc9ff' : e.pan > 0.2 ? '#b59cff' : '#5fffd0';
+      g.fillStyle = voiceColor[e.voice] ?? '#5fffd0';
       g.beginPath();
       g.arc(x, y, (1.5 + e.v * 2.5) * d, 0, Math.PI * 2);
       g.fill();
@@ -551,7 +641,7 @@ class Pelagic {
       g.fillText(
         this.world.nodes.some((n) => n.type === 'beacon')
           ? 'SONAR · en attente du premier passage de plancton…'
-          : 'SONAR · posez une balise (4) sur le trajet du plancton pour l’entendre chanter',
+          : 'SONAR · posez une balise (5) sur le trajet du plancton pour l’entendre chanter',
         12 * d,
         c.height / 2,
       );
@@ -565,7 +655,7 @@ class Pelagic {
       if (el && el.textContent !== v) el.textContent = v;
     };
     set('particles', String(m.count));
-    set('speed', `${(m.energy * 1000).toFixed(1)} mm/s`);
+    set('light', `${Math.round((m.lit ?? 0) * 100)} %`);
     set('nodes', `${m.nodes} / 24`);
     set('notes', String(this.notes));
     set('time', formatTime(m.time));
@@ -602,9 +692,9 @@ class Pelagic {
       to.push(this.E.serializeWorld(this.world, this.settings));
       const { world, settings } = this.E.deserializeWorld(from.pop());
       // On garde le plancton et le temps courants : seule la composition change.
-      world.particles = this.world.particles;
+      world.p = this.world.p;
       world.time = this.world.time;
-      const countChanged = settings.count !== this.world.particles.length;
+      const countChanged = settings.count !== this.world.p.n;
       this.loadWorld(world, settings, { keepTrails: true });
       if (countChanged) this.E.resetParticles(this.world, settings.count);
       this.lastCheckpoint = { key: null, at: -Infinity };
@@ -620,7 +710,21 @@ class Pelagic {
 
   // ---------- Édition ----------
 
+  /** Pendant la lecture d'une partition, seule la Main agit. */
+  canEdit() {
+    if (this.mode === 'compose' && this.transport.playing) {
+      this.say('La partition joue : seule la Main agit. Entrée pour mettre en pause et éditer ce mouvement.');
+      return false;
+    }
+    return true;
+  }
+
+  currentSettings() {
+    return this.mode === 'compose' && this.transport.playing && this.liveSettings ? this.liveSettings : this.settings;
+  }
+
   place(type, x, y, negative = false) {
+    if (!this.canEdit()) return null;
     this.checkpoint();
     try {
       const signed = type === 'vortex' || type === 'source';
@@ -637,11 +741,10 @@ class Pelagic {
   }
 
   remove(node) {
-    if (!node) return;
+    if (!node || !this.canEdit()) return;
     this.checkpoint();
     this.E.removeNode(this.world, node.id);
-    this.flashes.delete(node.id);
-    this.lastNote.delete(node.id);
+    this.flashes.delete(node.key);
     if (this.selectedId === node.id) this.select(null);
     if (this.hover?.id === node.id) this.hover = null;
     this.say(`${LABELS[node.type] ?? 'Élément'} retiré.`);
@@ -650,7 +753,7 @@ class Pelagic {
   }
 
   adjust(node, delta) {
-    if (!node) return;
+    if (!node || !this.canEdit()) return;
     this.checkpoint(`strength:${node.id}`);
     node.strength = nudgeStrength(node.strength, delta);
     if ((node.type === 'reef' || node.type === 'beacon') && node.strength < 0.1) node.strength = 0.1;
@@ -685,6 +788,8 @@ class Pelagic {
     if (!signed && node.strength < 0) node.strength = Math.abs(node.strength);
     range.value = String(node.strength);
     $('#insp-out').textContent = node.strength.toFixed(1);
+    $('#insp-voice-row').hidden = node.type !== 'beacon';
+    if (node.type === 'beacon') $('#insp-voice').value = canonicalVoice(node.voice);
     paintRange(range);
     box.dataset.type = node.type;
   }
@@ -693,7 +798,7 @@ class Pelagic {
     const range = $('#insp-strength');
     range.addEventListener('input', () => {
       const node = this.world.nodes.find((n) => n.id === this.selectedId);
-      if (!node) return;
+      if (!node || !this.canEdit()) return;
       this.checkpoint(`strength:${node.id}`);
       let v = Number(range.value);
       if (Math.abs(v) < 0.1) v = v < node.strength ? -0.1 : 0.1; // jamais nul
@@ -703,7 +808,7 @@ class Pelagic {
     });
     $('#insp-flip').addEventListener('click', () => {
       const node = this.world.nodes.find((n) => n.id === this.selectedId);
-      if (!node) return;
+      if (!node || !this.canEdit()) return;
       this.checkpoint();
       node.strength = -node.strength;
       this.syncInspector();
@@ -714,6 +819,21 @@ class Pelagic {
       this.remove(this.world.nodes.find((n) => n.id === this.selectedId));
     });
     $('#insp-close').addEventListener('click', () => this.select(null));
+    const voice = $('#insp-voice');
+    for (const v of VOICES) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = VOICE_LABELS[v];
+      voice.append(o);
+    }
+    voice.addEventListener('change', () => {
+      const node = this.world.nodes.find((n) => n.id === this.selectedId);
+      if (!node || !this.canEdit()) { this.syncInspector(); return; }
+      this.checkpoint();
+      node.voice = canonicalVoice(voice.value);
+      this.say(`Balise : voix ${VOICE_LABELS[node.voice]}.`);
+      this.schedulePersist();
+    });
   }
 
   // ---------- Entrées : canevas ----------
@@ -732,6 +852,13 @@ class Pelagic {
       this.unlockAudio();
       const w = this.eventToWorld(ev);
       if (!w) return;
+      if (this.tool === 'hand') {
+        this.hand = { x: w.x, y: w.y, t: performance.now(), id: ev.pointerId };
+        this.touchWater(w.x, w.y, 0, 0, 0.07);
+        cv.setPointerCapture(ev.pointerId);
+        return;
+      }
+      if (!this.canEdit()) return;
       const hit = nodeAt(this.world.nodes, w.x, w.y);
       if (this.tool === 'erase') {
         if (hit) this.remove(hit);
@@ -755,6 +882,18 @@ class Pelagic {
         x: clamp(((ev.clientX - b.left) * this.dpr - this.rect.x) / this.rect.size, 0, 1),
         y: clamp(((ev.clientY - b.top) * this.dpr - this.rect.y) / this.rect.size, 0, 1),
       };
+      if (this.hand && this.hand.id === ev.pointerId) {
+        const now = performance.now();
+        const dt = Math.max(8, now - this.hand.t) / 1000;
+        if (now - this.hand.t >= 16) {
+          const vx = (raw.x - this.hand.x) / dt;
+          const vy = (raw.y - this.hand.y) / dt;
+          const speed = Math.hypot(vx, vy);
+          this.touchWater(raw.x, raw.y, vx * 0.5, vy * 0.5, clamp(0.05 + speed * 0.03, 0.05, 0.12));
+          this.hand = { ...this.hand, x: raw.x, y: raw.y, t: now };
+        }
+        return;
+      }
       if (this.drag) {
         this.E.moveNode(this.world, this.drag.id, raw.x, raw.y);
         this.drag.moved = true;
@@ -771,6 +910,7 @@ class Pelagic {
     });
 
     const endDrag = () => {
+      this.hand = null;
       if (!this.drag) return;
       const n = this.world.nodes.find((k) => k.id === this.drag.id);
       if (n && this.drag.moved) {
@@ -795,6 +935,7 @@ class Pelagic {
       ev.preventDefault();
       const w = this.eventToWorld(ev);
       if (w) this.remove(nodeAt(this.world.nodes, w.x, w.y));
+      this.hand = null;
     });
 
     cv.addEventListener('wheel', (ev) => {
@@ -808,7 +949,7 @@ class Pelagic {
     // Curseur clavier : flèches pour viser, Entrée pour agir.
     cv.addEventListener('focus', () => {
       if (!this.cursor) this.cursor = { x: 0.5, y: 0.5 };
-      this.say('Canevas actif : flèches pour viser, Entrée pour placer, Suppr pour retirer, + / − pour la force.');
+      this.say('Canevas actif : flèches pour viser, Entrée pour agir (toucher l’eau ou placer), Suppr pour retirer, + / − pour la force.');
     });
     cv.addEventListener('blur', () => this.hideHint());
     cv.addEventListener('keydown', (ev) => {
@@ -834,7 +975,10 @@ class Pelagic {
       if (ev.key === 'Enter') {
         ev.preventDefault();
         this.unlockAudio();
-        if (this.tool === 'erase') this.remove(hit);
+        if (this.tool === 'hand') {
+          this.touchWater(this.cursor.x, this.cursor.y, 0, 0, 0.09);
+          this.say('Vous touchez l’eau : le plancton s’allume.');
+        } else if (this.tool === 'erase') this.remove(hit);
         else if (this.tool !== 'move' && !hit) this.place(this.tool, this.cursor.x, this.cursor.y, ev.shiftKey);
         else if (hit) this.say(describeNode(hit));
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
@@ -848,6 +992,15 @@ class Pelagic {
         if (hit) { this.adjust(hit, -0.1); this.say(describeNode(hit)); }
       }
     });
+  }
+
+  /** Geste Main : un sillage transitoire qui allume le plancton. */
+  touchWater(x, y, vx, vy, radius) {
+    try {
+      this.E.addWake(this.world, clamp(x, 0, 1), clamp(y, 0, 1), vx, vy, clamp(radius, 0.02, 0.2));
+    } catch (err) {
+      this.say(err.message);
+    }
   }
 
   showHint(node, ev) {
@@ -875,7 +1028,7 @@ class Pelagic {
 
   // ---------- Entrées : panneau ----------
 
-  setTool(tool) {
+  setTool(tool, { quiet = false } = {}) {
     this.tool = tool;
     for (const b of document.querySelectorAll('.tool')) {
       const on = b.dataset.tool === tool;
@@ -884,14 +1037,15 @@ class Pelagic {
     }
     this.canvas.dataset.tool = tool;
     const verbs = {
+      hand: 'Glissez dans l’eau : le plancton s’allume dans votre sillage.',
       vortex: 'Touchez l’océan pour créer un tourbillon (Maj : sens inverse).',
       source: 'Touchez l’océan pour créer une source (Maj : un puits qui aspire).',
       reef: 'Touchez l’océan pour poser un récif.',
-      beacon: 'Posez une balise sur le trajet du plancton : elle chantera à chaque passage.',
+      beacon: 'Posez une balise sur le trajet du plancton : elle chantera, calée sur la marée.',
       move: 'Faites glisser un élément, ou molette dessus pour régler sa force.',
       erase: 'Touchez un élément pour le retirer.',
     };
-    this.say(verbs[tool]);
+    if (!quiet) this.say(verbs[tool]);
   }
 
   bindControls() {
@@ -946,6 +1100,15 @@ class Pelagic {
         this.toast(err.message, 'error');
       }
     });
+    range('glow', 'glow-out', (v) => v.toFixed(2), (v) => {
+      this.settings.glow = v;
+      this.schedulePersist();
+    });
+    range('tempo', 'tempo-out', (v) => `${v} bpm`, (v, commit) => {
+      this.settings.tempo = Math.round(v);
+      if (this.score) this.score.tempo = Math.round(v);
+      if (commit) this.schedulePersist();
+    });
     range('trail', 'trail-out', (v) => v.toFixed(2), (v) => {
       this.trailPersistence = v;
       this.schedulePersist();
@@ -957,6 +1120,29 @@ class Pelagic {
     });
 
     $('#sound').addEventListener('click', () => this.toggleSound());
+    $('#record').addEventListener('click', () => this.toggleRecording());
+    const scale = $('#scale');
+    for (const [k, label] of Object.entries(SCALE_LABELS)) {
+      const o = document.createElement('option');
+      o.value = k;
+      o.textContent = label;
+      scale.append(o);
+    }
+    scale.addEventListener('change', () => {
+      this.settings.scale = canonicalScale(scale.value);
+      if (this.score) this.score.scale = this.settings.scale;
+      this.say(`Gamme : ${SCALE_LABELS[this.settings.scale]}.`);
+      this.schedulePersist();
+    });
+    $('#quantize').addEventListener('change', (ev) => {
+      this.settings.quantize = ev.target.checked;
+      if (this.score) {
+        for (const movement of this.score.movements) movement.settings.quantize = this.settings.quantize;
+      }
+      this.conductor.reset();
+      this.say(ev.target.checked ? 'Les balises se calent sur la marée.' : 'Les balises chantent librement, au passage.');
+      this.schedulePersist();
+    });
     $('#play').addEventListener('click', () => this.togglePause());
     $('#respawn').addEventListener('click', () => this.respawn());
     $('#clear').addEventListener('click', () => this.clearAll());
@@ -985,6 +1171,14 @@ class Pelagic {
     paintRange($('#count'));
     setVal('trail', this.trailPersistence);
     setVal('volume', this.volume);
+    $('#glow').value = String(this.settings.glow ?? 0.55);
+    $('#glow-out').textContent = Number(this.settings.glow ?? 0.55).toFixed(2);
+    paintRange($('#glow'));
+    $('#tempo').value = String(this.settings.tempo ?? 84);
+    $('#tempo-out').textContent = `${this.settings.tempo ?? 84} bpm`;
+    paintRange($('#tempo'));
+    $('#scale').value = canonicalScale(this.settings.scale);
+    $('#quantize').checked = this.settings.quantize !== false;
     this.audio.setVolume(this.volume);
     this.canvas.dataset.tool = this.tool;
     for (const b of document.querySelectorAll('.tool')) b.tabIndex = b.dataset.tool === this.tool ? 0 : -1;
@@ -992,6 +1186,10 @@ class Pelagic {
       const s = $('#sound');
       s.disabled = true;
       s.textContent = 'Son indisponible dans ce navigateur';
+    }
+    if (!this.audio.canRecord) {
+      $('#record').disabled = true;
+      $('#record').title = 'Enregistrement indisponible dans ce navigateur';
     }
   }
 
@@ -1011,9 +1209,11 @@ class Pelagic {
       if (ev.key === 'p' || ev.key === 'P') { this.snapshot(); return; }
       if (ev.key === 'Escape' && document.body.classList.contains('is-immersive')) { this.toggleImmersion(false); return; }
       if (ev.key === 'Escape' && this.selectedId !== null) { this.select(null); return; }
-      const tools = ['vortex', 'source', 'reef', 'beacon', 'move', 'erase'];
-      if (/^[1-6]$/.test(ev.key)) {
-        this.setTool(tools[Number(ev.key) - 1]);
+      if (/^[1-7]$/.test(ev.key)) {
+        this.setTool(TOOLS[Number(ev.key) - 1]);
+      } else if (ev.key === 'Enter' && this.mode === 'compose' && ev.target === document.body) {
+        ev.preventDefault();
+        this.toggleTransport();
       } else if (ev.key === ' ' && ev.target?.tagName !== 'BUTTON') {
         ev.preventDefault();
         this.togglePause();
@@ -1054,7 +1254,37 @@ class Pelagic {
     btn.setAttribute('aria-pressed', 'true');
     btn.firstChild.textContent = 'Son actif ';
     const hasBeacon = this.world.nodes.some((n) => n.type === 'beacon');
-    this.say(hasBeacon ? 'Son actif : écoutez vos balises.' : 'Son actif. Posez une balise (4) pour entendre le plancton.');
+    this.say(hasBeacon ? 'Son actif : écoutez vos balises.' : 'Son actif. Posez une balise (5) pour entendre le plancton.');
+  }
+
+  async toggleRecording() {
+    const btn = $('#record');
+    if (this.audio.recording) {
+      const blob = await this.audio.stopRecording();
+      btn.setAttribute('aria-pressed', 'false');
+      btn.textContent = 'Enregistrer';
+      $('#rec-badge').hidden = true;
+      if (!blob) {
+        this.toast('Enregistrement vide : aucune note n’a été captée.', 'error');
+        return;
+      }
+      const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'm4a' : 'webm';
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      download(blob, `pelagic-nocturne-${stamp}.${ext}`);
+      this.toast(`Enregistrement sauvegardé (${formatTime(this.clock - this.recStart)}, ${Math.round(blob.size / 1024)} Ko).`);
+      return;
+    }
+    if (!this.audio.enabled) await this.toggleSound();
+    if (!this.audio.enabled) return;
+    if (!this.audio.startRecording()) {
+      this.toast('Ce navigateur ne permet pas d’enregistrer l’audio.', 'error');
+      return;
+    }
+    this.recStart = this.clock;
+    btn.setAttribute('aria-pressed', 'true');
+    btn.textContent = 'Arrêter l’enregistrement';
+    $('#rec-badge').hidden = false;
+    this.say('Enregistrement en cours : tout ce que vous entendez est capturé, localement.');
   }
 
   togglePause() {
@@ -1068,7 +1298,7 @@ class Pelagic {
   respawn() {
     try {
       this.E.resetParticles(this.world, this.settings.count);
-      this.tctx.clearRect(0, 0, this.trail.width, this.trail.height);
+      this.renderer.clear();
       this.say('Nouveau plancton relâché.');
     } catch (err) {
       this.toast(err.message, 'error');
@@ -1076,6 +1306,7 @@ class Pelagic {
   }
 
   clearAll() {
+    if (!this.canEdit()) return;
     if (!this.world.nodes.length) {
       this.say('L’océan est déjà vide.');
       return;
@@ -1084,18 +1315,8 @@ class Pelagic {
     const snapshot = this.world.nodes.map((n) => ({ ...n }));
     for (const n of snapshot) this.E.removeNode(this.world, n.id);
     this.flashes.clear();
-    this.lastNote.clear();
     this.schedulePersist();
-    this.toast(`${snapshot.length} élément(s) retiré(s).`, 'info', {
-      label: 'Annuler',
-      run: () => {
-        for (const n of snapshot) {
-          try { this.E.addNode(this.world, n.type, n.x, n.y, n.strength); } catch { /* limite atteinte */ }
-        }
-        this.schedulePersist();
-        this.say('Éléments restaurés.');
-      },
-    });
+    this.toast(`${snapshot.length} élément(s) retiré(s).`, 'info', { label: 'Annuler', run: () => this.undo() });
   }
 
   mountAtlas({ ATLAS, atlasToJson, atlasPreview }) {
@@ -1121,6 +1342,7 @@ class Pelagic {
   }
 
   loadAtlas(entry, atlasToJson) {
+    if (!this.canEdit()) return;
     let snapshot = null;
     try {
       snapshot = this.E.serializeWorld(this.world, this.settings);
@@ -1146,6 +1368,7 @@ class Pelagic {
         try {
           const { world, settings } = this.E.deserializeWorld(snapshot);
           this.loadWorld(world, settings);
+          this.captureIfComposing();
           for (const b of document.querySelectorAll('.atlas__card')) b.removeAttribute('aria-current');
           this.say('Composition précédente restaurée.');
         } catch (err) {
@@ -1198,39 +1421,45 @@ class Pelagic {
 
   exportFile() {
     let json;
+    const composing = this.mode === 'compose' && this.score;
     try {
-      json = this.E.serializeWorld(this.world, this.settings);
+      json = composing ? this.S.serializeScore(this.score) : this.E.serializeWorld(this.world, this.settings);
     } catch (err) {
       this.toast(`Export impossible : ${err.message}`, 'error');
       return;
     }
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    a.href = url;
-    a.download = `pelagic-${stamp}.json`;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    this.say('Composition exportée.');
+    download(new Blob([json], { type: 'application/json' }), `pelagic-${composing ? 'nocturne' : 'composition'}-${stamp}.json`);
+    this.say(composing ? 'Partition exportée : quatre mouvements, tempo et gamme.' : 'Composition exportée.');
   }
 
   async importFile(input) {
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    if (file.size > 32000) {
-      this.toast('Fichier trop volumineux (32 Ko maximum).', 'error');
+    if (file.size > 128000) {
+      this.toast('Fichier trop volumineux (128 Ko maximum).', 'error');
       return;
     }
     try {
       const text = await file.text();
-      const { world, settings } = this.E.deserializeWorld(text);
-      this.checkpoint();
-      this.loadWorld(world, settings);
-      this.say(`« ${file.name} » importé : ${world.nodes.length} élément(s).`);
+      let kind = null;
+      try { kind = JSON.parse(text)?.kind; } catch { /* le moteur expliquera l'erreur */ }
+      if (kind === 'score') {
+        const score = this.S.deserializeScore(text);
+        this.stopTransport();
+        this.score = score;
+        this.setMode('compose', { quiet: true });
+        this.selectMovement(0);
+        this.say(`Partition « ${score.title} » importée : quatre mouvements, ${score.bars} mesures.`);
+      } else {
+        if (!this.canEdit()) return;
+        const { world, settings } = this.E.deserializeWorld(text);
+        this.checkpoint();
+        this.loadWorld(world, settings);
+        this.captureIfComposing();
+        this.say(`« ${file.name} » importé : ${world.nodes.length} élément(s).`);
+      }
     } catch (err) {
       this.toast(`Import refusé : ${err.message}`, 'error');
     }
@@ -1240,11 +1469,11 @@ class Pelagic {
     this.world = world;
     this.settings = settings;
     this.flashes.clear();
-    this.lastNote.clear();
+    this.conductor.reset();
     this.hover = null;
     this.hideHint();
     this.select(null);
-    if (!keepTrails) this.tctx.clearRect(0, 0, this.trail.width, this.trail.height);
+    if (!keepTrails) this.renderer.clear();
     this.syncControls();
     this.schedulePersist();
   }
@@ -1265,6 +1494,200 @@ class Pelagic {
       history.replaceState(null, '', url);
       this.toast('Presse-papiers indisponible : le lien est dans la barre d’adresse.');
     }
+  }
+
+  // ---------- Modes et partition ----------
+
+  bindModes() {
+    const group = $('#modes');
+    group.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-mode]');
+      if (b) this.setMode(b.dataset.mode);
+    });
+    group.addEventListener('keydown', (ev) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(ev.key)) return;
+      ev.preventDefault();
+      const next = this.mode === 'explore' ? 'compose' : 'explore';
+      this.setMode(next);
+      group.querySelector(`[data-mode="${next}"]`).focus();
+    });
+  }
+
+  setMode(mode, { quiet = false } = {}) {
+    if (mode === this.mode) return;
+    if (mode === 'compose') {
+      if (!this.score) {
+        try {
+          // Première visite : on découvre une vraie pièce, pas quatre copies de l'océan.
+          this.score = createNocturne();
+        } catch (err) {
+          this.toast(`Partition impossible : ${err.message}`, 'error');
+          return;
+        }
+      }
+      // L'océan d'Explorer est mis de côté, intact, le temps de composer.
+      this.exploreSnapshot = { nodes: this.world.nodes.map((n) => ({ ...n })), settings: { ...this.settings } };
+      this.mode = 'compose';
+      this.settings = { ...this.settings, tempo: this.score.tempo, scale: this.score.scale };
+      this.selectMovement(this.movement, { quiet: true });
+      if (!quiet) this.say('Composer : chaque mouvement est un état de l’océan. Éditez-en un, puis Entrée pour écouter la métamorphose.');
+    } else {
+      this.stopTransport();
+      this.mode = 'explore';
+      if (this.exploreSnapshot) {
+        this.world.nodes = this.exploreSnapshot.nodes;
+        this.world.nextId = Math.max(0, ...this.world.nodes.map((n) => n.id)) + 1;
+        this.settings = { ...this.exploreSnapshot.settings, count: this.settings.count };
+        this.exploreSnapshot = null;
+        this.select(null);
+        this.flashes.clear();
+        this.conductor.reset();
+      }
+      if (!quiet) this.say('Explorer : l’océan est à vous, sans partition.');
+    }
+    document.body.dataset.mode = this.mode;
+    $('#score').hidden = this.mode !== 'compose';
+    $('#share-lede').textContent = this.mode === 'compose' ? 'Exporte toute la partition (quatre mouvements).' : 'Exporte la composition affichée.';
+    for (const b of document.querySelectorAll('#modes [data-mode]')) {
+      const on = b.dataset.mode === this.mode;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    this.syncControls();
+    this.timeline.render(this.timelineState());
+    requestAnimationFrame(() => this.resize());
+    this.schedulePersist();
+  }
+
+  timelineState() {
+    return { score: this.score, selected: this.movement, transport: this.transport };
+  }
+
+  phase() {
+    if (!this.score) return 0;
+    const total = this.score.bars * 4;
+    return (((this.transport.beat % total) + total) % total) / total;
+  }
+
+  /** Affiche un mouvement (lecture arrêtée) pour l'éditer. */
+  selectMovement(i, { quiet = false } = {}) {
+    if (!this.score) return;
+    this.stopTransport();
+    this.movement = clamp(i, 0, 3);
+    this.transport = { ...this.transport, beat: this.movement * this.score.bars, ended: false };
+    const sample = this.S.sampleScore(this.score, this.transport.beat);
+    this.S.applySample(this.world, sample);
+    this.settings = { ...this.settings, ...sample.settings };
+    // Explicit selection/import loads the movement's population once. During
+    // playback applySample preserves the buffers, so morphing stays continuous.
+    if (this.world.p.n !== this.settings.count) {
+      this.E.resetParticles(this.world, this.settings.count);
+      this.renderer.clear();
+    }
+    this.conductor.reset();
+    this.select(null);
+    this.syncControls();
+    this.timeline.render(this.timelineState());
+    const m = this.score.movements[this.movement];
+    if (!quiet) this.say(`Mouvement ${['I', 'II', 'III', 'IV'][this.movement]} — « ${m.name} » : éditez l’océan, il s’enregistre dans ce mouvement.`);
+  }
+
+  toggleTransport() {
+    if (this.mode !== 'compose' || !this.score) return;
+    if (this.transport.playing) {
+      this.stopTransport();
+      const { movement } = this.S.sampleScore(this.score, this.transport.beat);
+      this.selectMovement(movement, { quiet: true });
+      this.say(`Pause — édition du mouvement ${['I', 'II', 'III', 'IV'][movement]} « ${this.score.movements[movement].name} ».`);
+      return;
+    }
+    this.captureIfComposing();
+    this.select(null);
+    if (this.paused) this.togglePause();
+    this.conductor.reset();
+    this.transport = { ...this.transport, playing: true, ended: false };
+    if (this.tool !== 'hand') this.setTool('hand', { quiet: true });
+    this.timeline.render(this.timelineState());
+    const nudge = this.audio.enabled ? '' : ' Activez le son (M) pour l’entendre.';
+    this.say(`La partition joue : ${this.score.tempo} bpm, ${SCALE_LABELS[this.score.scale]}. Touchez l’eau pour l’interpréter.${nudge}`);
+  }
+
+  stopTransport() {
+    if (!this.transport.playing) return;
+    this.transport = { ...this.transport, playing: false };
+    this.liveSettings = null;
+    this.timeline?.render(this.timelineState());
+  }
+
+  onTransportEnded() {
+    this.liveSettings = null;
+    this.timeline.render(this.timelineState());
+    this.say('Fin de la partition. Entrée pour la rejouer.');
+  }
+
+  /** Charge et joue la Nocturne de démonstration ; la partition précédente reste annulable. */
+  playNocturne() {
+    const previous = this.score;
+    this.unlockAudio();
+    this.stopTransport();
+    this.score = createNocturne();
+    this.movement = 0;
+    if (this.mode !== 'compose') this.setMode('compose', { quiet: true });
+    this.selectMovement(0, { quiet: true });
+    this.toggleTransport();
+    this.schedulePersist();
+    if (previous) {
+      this.toast('« Ce que l’eau garde » est chargée.', 'info', {
+        label: 'Revenir à ma partition',
+        run: () => {
+          this.stopTransport();
+          this.score = previous;
+          this.selectMovement(0, { quiet: true });
+          this.schedulePersist();
+          this.say('Votre partition est revenue.');
+        },
+      });
+    }
+  }
+
+  copyToNext() {
+    if (!this.score || this.transport.playing) return;
+    const next = (this.movement + 1) % 4;
+    try {
+      this.S.captureMovement(this.score, next, this.world, this.settings);
+    } catch (err) {
+      this.toast(err.message, 'error');
+      return;
+    }
+    this.selectMovement(next, { quiet: true });
+    this.schedulePersist();
+    this.say(`Mouvement ${['I', 'II', 'III', 'IV'][next]} : copie du précédent. Faites-le évoluer.`);
+  }
+
+  setBars(n) {
+    if (!this.score) return;
+    try {
+      this.score = this.S.deserializeScore(JSON.stringify({ ...this.score, bars: n }));
+    } catch (err) {
+      this.toast(err.message, 'error');
+      return;
+    }
+    this.selectMovement(this.movement, { quiet: true });
+    this.schedulePersist();
+    this.say(`Partition de ${n} mesures (${Math.round((n * 4 * 60) / this.score.tempo)} s par cycle).`);
+  }
+
+  renameMovement(i, name) {
+    if (!this.score) return;
+    const movements = this.score.movements.map((m, k) => (k === i ? { ...m, name } : m));
+    try {
+      this.score = this.S.deserializeScore(JSON.stringify({ ...this.score, movements }));
+    } catch (err) {
+      this.toast(err.message, 'error');
+      return;
+    }
+    this.timeline.render(this.timelineState());
+    this.schedulePersist();
   }
 
   // ---------- Messages ----------
@@ -1294,6 +1717,18 @@ class Pelagic {
     this.toastTimer = setTimeout(() => { el.hidden = true; }, action ? 6000 : 3800);
     if (kind === 'error') this.say(text);
   }
+}
+
+/** Propose un fichier local au téléchargement. */
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Colore la partie remplie d'un curseur (WebKit) via une variable CSS. */

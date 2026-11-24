@@ -36,3 +36,7 @@ Technical sources checked: https://docs.railway.com/config-as-code/reference , h
 Le même public/ peut être copié par node scripts/build-static.mjs, sans compilation ni Git. Les liens et imports relatifs fonctionnent également sous /Duo/. L’artefact statique ajoute une CSP en meta et exclut tout fichier interne. Le workflow Pages exécute les tests et le scan avant de publier l’artefact du dépôt existant. Aucun autre dépôt, abonnement ou service facturable n’est créé.
 
 Le serveur Node/Railway conserve les en-têtes HTTP complets et /health ; Pages sert uniquement les fichiers et ne remplace pas un serveur Node. Ses protections HTTP sont celles de la plateforme, complétées par la CSP meta de l’artefact. Le projet ne dépend pas de Pages pour son lancement local ou Railway.
+
+## Hébergement effectivement réalisé
+
+https://nyaru01.github.io/Duo/ est servi par GitHub Pages depuis le dépôt demandé, après workflow vérifiant tests et scan. Cette URL a été ouverte et les quatre œuvres ainsi que les exports ont été contrôlés en HTTPS. Ce n’est pas un déploiement Railway. Le serveur Node et sa configuration Railway restent prêts à l’emploi.

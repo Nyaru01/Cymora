@@ -6,7 +6,9 @@ QUATRE brings together PELAGIC — The Garden of Currents, Nocturne and Résonan
 
 The public edition is available in French and English. It is free to visit, requires no account or API key, contains no advertising or analytics, and keeps creative data on the visitor’s device. Sound starts through a deliberate action. No microphone or camera is used.
 
-Repository: https://github.com/Nyaru01/Duo . No Railway deployment URL is claimed; see [deployment readiness](docs/G5-DEPLOYMENT.md).
+**Play: https://nyaru01.github.io/Duo/** · [Source repository](https://github.com/Nyaru01/Duo)
+
+The live site is hosted on GitHub Pages and was verified over HTTPS. Railway is separately prepared, with no deployment or billed service created; see [deployment readiness](docs/G5-DEPLOYMENT.md).
 
 ## Run locally
 
@@ -61,6 +63,8 @@ The Dockerfile copies only `server.mjs`, `package.json` and `public/`, runs as t
 ## Français
 
 QUATRE réunit quatre œuvres interactives, de PELAGIC à INTERVALLE. L’édition publique est gratuite, bilingue, sans compte, publicité ou collecte personnelle. Les compositions, empreintes, souvenirs et préférences restent dans le navigateur. Le son est volontaire, sans microphone.
+
+Exposition en ligne : **https://nyaru01.github.io/Duo/** .
 
 Lancer `START.ps1`, ouvrir http://127.0.0.1:4173/ et arrêter avec `STOP.ps1`. Node ≥22, aucune dépendance à installer et aucun accès Git nécessaire à l’exécution. Le dossier `public/` contient les quatre éditions prêtes à être servies.
 

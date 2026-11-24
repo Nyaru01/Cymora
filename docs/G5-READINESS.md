@@ -49,3 +49,11 @@ Exports Nocturne réels de cette édition : JSON 8 605 octets, PNG 847 984 octet
 - La copie de publication n’a pas pour parent un commit privé. Les tags privés locaux n’ont pas été déplacés.
 
 La vérification du déploiement Pages sera inscrite après contrôle effectif de son URL HTTPS ; elle ne sera pas confondue avec un déploiement Railway.
+
+## Vérification HTTPS effective
+
+Site public vérifié : https://nyaru01.github.io/Duo/ . Déploiement Pages réussi : https://github.com/Nyaru01/Duo/actions/runs/45429634664 . Les quatre œuvres s’ouvrent sous /Duo/ ; liens directs et langues fonctionnent. L’Atelier anglais atteint douze chapitres après chargement des modules ; les deux rapports anglais sont chargés. Aucun échec de ressource ni erreur d’application observé sur ces parcours.
+
+Exports réellement téléchargés depuis le domaine HTTPS : Jardin JSON et PNG ; Nocturne JSON, PNG et WebM ; Résonance empreinte JSON à deux phrases et WebM ; Intervalle SVG. Les JSON ont été analysés (versions 1/2/3), le SVG est un XML valide et les deux WebM possèdent l’entête EBML 1a45dfa3. Les fichiers sont rangés dans .runtime/qa/g5-live-*.
+
+Les exports HTTPS ne sont donc plus une simple inférence du test localhost. Le partage natif dépend du navigateur et du système ; une copie explicite de lien est fournie comme parcours stable. La dernière validation de ce bouton et le SHA de publication sont enregistrés à la clôture.

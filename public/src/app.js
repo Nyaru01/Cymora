@@ -8,10 +8,11 @@ import { createObjectView, createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 import { MODES, applyCymatics, buildField, modeIndex } from './cymatics.js';
 import * as G from './game.js';
-import { createI18n, mountLangSwitch } from '../shared/i18n.js';
+import { createI18n } from '../shared/i18n.js';
 import { DICT } from './strings.js';
 
 const i18n = createI18n(DICT);
+i18n.set('fr'); // Cymora parle français
 const t = i18n.t;
 
 const STEP = 1 / 60;
@@ -19,7 +20,7 @@ const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SEEN = 'cymora.prologue.v1';
 const SETTINGS = 'cymora.settings.v1';
-const VERSION = '1.4.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.5.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -50,8 +51,8 @@ boot();
 
 async function boot() {
   i18n.apply();
-  mountLangSwitch($('#lang'), i18n);
   document.title = t('meta.title');
+  startIntro();
   const began = performance.now();
   splashProgress(0.08);
   let E;
@@ -131,11 +132,34 @@ function iosTick() {
 }
 /** Vibration : des impulsions assez longues pour que tous les moteurs les rendent (moins de ~20 ms passe inaperçu). */
 function haptic(pattern) {
-  if (!settings.haptics) return;
+  if (!settings.haptics) return null;
   try {
-    if (CAN_VIBRATE) navigator.vibrate(pattern);
-    else if (IOS) iosTick();
+    if (CAN_VIBRATE) return navigator.vibrate(pattern);
+    if (IOS) iosTick();
   } catch { /* pas de vibreur */ }
+  return null;
+}
+
+/** Fenêtres : elles s'ouvrent et se referment en douceur (fondu et léger glissé). */
+function openDialog(d) {
+  d.classList.remove('is-closing');
+  if (!d.open) d.showModal();
+}
+function closeDialog(d) {
+  return new Promise((done) => {
+    if (!d.open) return done();
+    if (reducedMotion) { d.close(); return done(); }
+    let over = false;
+    const end = () => { if (over) return; over = true; d.classList.remove('is-closing'); d.close(); done(); };
+    d.classList.add('is-closing');
+    d.addEventListener('animationend', end, { once: true });
+    setTimeout(end, 360);
+  });
+}
+for (const d of document.querySelectorAll('dialog')) {
+  d.addEventListener('cancel', (ev) => { ev.preventDefault(); closeDialog(d); });
+  d.querySelector('form[method="dialog"]')?.addEventListener('submit', (ev) => { ev.preventDefault(); closeDialog(d); });
+  d.addEventListener('click', (ev) => { if (ev.target === d) closeDialog(d); }); // un toucher hors de la fenêtre la ferme
 }
 
 /**
@@ -179,6 +203,30 @@ function splashProgress(k) {
   $('#splash-bar').setAttribute('aria-valuenow', String(v));
 }
 
+/**
+ * L'intro vidéo remplace le logo fixe. Si elle ne peut pas se lire (hors ligne, économie de données,
+ * animations réduites), le logo reprend sa place et on n'attend pas.
+ */
+function startIntro() {
+  const v = $('#splash-video');
+  const fallback = () => document.body.classList.add('no-intro');
+  if (reducedMotion || !v) { v?.remove(); fallback(); return; }
+  v.addEventListener('error', fallback, { once: true });
+  v.addEventListener('playing', () => document.body.classList.add('has-intro'), { once: true });
+  const p = v.play();
+  p?.catch?.(fallback);
+  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 2500);
+}
+function introMoment(ms) {
+  if (!document.body.classList.contains('has-intro') || ms <= 0) return Promise.resolve();
+  return new Promise((done) => {
+    const timer = setTimeout(finish, ms);
+    const splash = $('#splash');
+    function finish() { clearTimeout(timer); splash.removeEventListener('pointerdown', finish); done(); }
+    splash.addEventListener('pointerdown', finish, { once: true });
+  });
+}
+
 /** Fin du chargement. Au premier lancement, le prologue se lit avant d'entrer ; ensuite, on entre directement. */
 async function openThreshold(began) {
   let seen = false;
@@ -186,10 +234,13 @@ async function openThreshold(began) {
   const splash = $('#splash');
   splash.classList.add('is-ready');
   if (seen && !new URLSearchParams(location.search).has('prologue')) {
-    await new Promise((r) => setTimeout(r, Math.max(0, 1100 - (performance.now() - began))));
+    // On laisse la rosace de l'intro se former (≈ 5 s) ; un toucher l'abrège.
+    await introMoment(5200 - (performance.now() - began));
     document.body.dataset.state = 'threshold';
     return;
   }
+  // Premier lancement : l'intro se joue en entier avant le prologue.
+  await introMoment(9800 - (performance.now() - began));
   const lines = [...$('#prologue').children];
   $('#prologue').hidden = false;
   const enter = $('#splash-enter');
@@ -345,15 +396,15 @@ class Cymora {
     this.bindMenu();
     $('#where').addEventListener('click', () => this.openMap());
     const map = $('#map');
-    $('#map-daily').addEventListener('click', () => { map.close(); this.startDaily(); });
-    $('#map-free').addEventListener('click', () => { map.close(); this.startFree(); });
+    $('#map-daily').addEventListener('click', async () => { await closeDialog(map); this.startDaily(); });
+    $('#map-free').addEventListener('click', async () => { await closeDialog(map); this.startFree(); });
     $('#side-map').addEventListener('click', () => this.openMap());
     $('#reset').addEventListener('click', () => {
       const before = this.progress;
       this.progress = G.freshProgress();
       this.save();
       this.syncScore();
-      map.close();
+      closeDialog(map);
       this.toast(t('t.reset'), t('t.undo'), () => { this.progress = before; this.save(); this.syncScore(); this.relabel(); });
       this.startTide(0);
     });
@@ -364,8 +415,8 @@ class Cymora {
   bindMenu() {
     const menu = $('#menu');
     $('#menu-open').addEventListener('click', () => this.openMenu());
-    $('#menu-home').addEventListener('click', () => { menu.close(); this.goHome(); });
-    $('#menu-journey').addEventListener('click', () => { menu.close(); this.openMap(); });
+    $('#menu-home').addEventListener('click', async () => { await closeDialog(menu); this.goHome(); });
+    $('#menu-journey').addEventListener('click', async () => { await closeDialog(menu); this.openMap(); });
     $('#set-sound').addEventListener('click', async () => {
       settings.sound = !settings.sound;
       saveSettings();
@@ -380,7 +431,8 @@ class Cymora {
       settings.haptics = !settings.haptics;
       saveSettings();
       this.syncSettings();
-      haptic(45); // pour sentir tout de suite ce que ça donne
+      const answer = haptic(60); // pour sentir tout de suite ce que ça donne
+      if (settings.haptics && CAN_VIBRATE) $('#set-haptics-line').textContent = t(answer ? 'set.hapticsOk' : 'set.hapticsRefused');
     });
     for (const key of ['guide', 'calm']) {
       $(`#set-${key}`).addEventListener('click', () => { settings[key] = !settings[key]; saveSettings(); this.syncSettings(); });
@@ -392,7 +444,7 @@ class Cymora {
   openMenu() {
     $('#menu-home').hidden = document.body.dataset.state !== 'play';
     this.syncSettings();
-    $('#menu').showModal();
+    openDialog($('#menu'));
   }
 
   syncSettings() {
@@ -438,19 +490,22 @@ class Cymora {
       b.disabled = !unlocked;
       const name = document.createElement('span');
       name.className = 'tide__name';
+      const art = document.createElement('span');
+      art.className = `tide__art tide__art--${tide.id}`;
+      art.setAttribute('aria-hidden', 'true');
       name.textContent = `${ROMAN[k]} · ${t(`tide.${tide.id}`)}`;
       const line = document.createElement('span');
       line.className = 'tide__line';
       line.textContent = unlocked ? t(`line.${tide.id}`) : t('map.locked');
-      b.append(name, line, this.pearlsFor(k));
-      b.addEventListener('click', () => { $('#map').close(); this.startTide(k); });
+      b.append(art, name, line, this.pearlsFor(k));
+      b.addEventListener('click', async () => { await closeDialog($('#map')); this.startTide(k); });
       li.append(b);
       list.append(li);
     });
     const done = (this.progress.days[this.today] ?? 0) >= G.DAILY_PASS;
     const streak = G.liveStreak(this.progress, this.today);
     $('#map-daily-state').textContent = `${t(done ? 'map.dailyDone' : 'map.dailyTodo')}${streak ? ` · ${t('streak', { n: streak })}` : ''}`;
-    $('#map').showModal();
+    openDialog($('#map'));
   }
 
   pearlsFor(k) {

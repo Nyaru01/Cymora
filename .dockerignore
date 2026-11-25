@@ -6,3 +6,6 @@
 !chorus.mjs
 !public/
 !public/**
+# Sources brutes : on ne publie que les découpes et la vidéo d’intro.
+public/img/*Sheet*
+public/vid/gemini_*

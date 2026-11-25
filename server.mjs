@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {timingSafeEqual,createHash} from 'node:crypto';
 import {createChorus,createLimiter,acceptableDay,judgeTrace,PASS} from './chorus.mjs';
 const root = new URL('./public/',import.meta.url);
-const types={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',json:'application/json; charset=utf-8',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',webp:'image/webp',ico:'image/x-icon',md:'text/plain; charset=utf-8',txt:'text/plain; charset=utf-8'};
+const types={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',json:'application/json; charset=utf-8',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',webp:'image/webp',ico:'image/x-icon',mp4:'video/mp4',md:'text/plain; charset=utf-8',txt:'text/plain; charset=utf-8'};
 const assets=new Map();
 async function inventory(dir,prefix='') {
   for(const entry of await readdir(dir,{withFileTypes:true})){
@@ -63,7 +63,16 @@ const server=http.createServer(async(req,res)=>{
     }
     const etag='"'+createHash('sha256').update(body).digest('base64url')+'"';res.setHeader('ETag',etag);
     if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
-    res.writeHead(200,{'Content-Type':types[extension]});res.end(req.method==='HEAD'?undefined:body);
+    // Vidéo : Safari (iPhone) ne la lit que si le serveur répond par plages d'octets (206).
+    const range=/^bytes=(\d*)-(\d*)$/.exec(req.headers.range||'');
+    if(extension==='mp4'&&range){
+      const size=body.length;let start=range[1]===''?size-Number(range[2]):Number(range[1]);let end=range[1]===''||range[2]===''?size-1:Number(range[2]);
+      start=Math.max(0,start);end=Math.min(size-1,end);
+      if(!(start<=end)){res.writeHead(416,{'Content-Range':`bytes */${size}`});res.end();return;}
+      res.writeHead(206,{'Content-Type':types.mp4,'Accept-Ranges':'bytes','Content-Range':`bytes ${start}-${end}/${size}`,'Content-Length':end-start+1});
+      res.end(req.method==='HEAD'?undefined:body.subarray(start,end+1));return;
+    }
+    res.writeHead(200,{'Content-Type':types[extension],...(extension==='mp4'?{'Accept-Ranges':'bytes'}:{})});res.end(req.method==='HEAD'?undefined:body);
   }catch{return error(500,'Cette ressource est momentanément indisponible.','This resource is temporarily unavailable.');}
 });
 // Chœur du jour : GET lit le chœur, POST y ajoute une voix (si elle est accordée). Réponses JSON, jamais en cache.

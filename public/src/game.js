@@ -17,15 +17,15 @@ export const MOTIFS_PER_TIDE = 5;
 
 /**
  * Les quatre marées : on apprend d'abord à voir le chant, puis à le suivre,
- * à s'en souvenir, enfin à l'entendre sans aucun tracé.
+ * à s'en souvenir, enfin à le deviner d'un souffle de lumière.
  * guide : 'always' (tracé visible pendant la réponse), 'call' (visible pendant le chant, s'efface
  * quand on répond), 'glimpse' (à peine esquissé pendant le chant), 'none' (le son et la forme seuls).
  */
 export const TIDES = Object.freeze([
   { id: 'see', notes: [2, 3], guide: 'always', span: 3 },
   { id: 'follow', notes: [3, 4], guide: 'call', span: 4 },
-  { id: 'remember', notes: [4, 5], guide: 'glimpse', span: 4 },
-  { id: 'listen', notes: [3, 5], guide: 'none', span: 5 },
+  { id: 'remember', notes: [4, 5], guide: 'call', span: 4 },
+  { id: 'listen', notes: [3, 5], guide: 'glimpse', span: 5 },
 ]);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

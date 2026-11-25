@@ -19,6 +19,7 @@
 </head>
 <body data-state="loading" data-tide="see">
   <main class="scene" id="scene">
+    <div class="backdrop" aria-hidden="true"><i class="backdrop__img backdrop--see"></i><i class="backdrop__img backdrop--follow"></i><i class="backdrop__img backdrop--remember"></i><i class="backdrop__img backdrop--listen"></i><i class="backdrop__img backdrop--daily"></i><i class="backdrop__img backdrop--free"></i></div>
     <canvas id="matter" class="scene__matter" tabindex="0" role="application" data-i18n-attr="aria-label:matter.label" aria-describedby="whisper"></canvas>
     <canvas id="ink" class="scene__ink" aria-hidden="true"></canvas>
     <p class="whisper" id="whisper" aria-live="polite"></p>
@@ -52,6 +53,7 @@
   </header>
 
   <section class="splash" id="splash" aria-labelledby="splash-title">
+    <video class="splash__video" id="splash-video" src="./vid/Intro.mp4" muted playsinline autoplay preload="auto" disablepictureinpicture aria-hidden="true"></video>
     <img class="splash__logo" src="./icons/cymora-hero.jpg" alt="" width="880" height="880">
     <p class="splash__title" id="splash-title" data-i18n="load.title">Cymora s’éveille…</p>
     <div class="splash__bar" role="progressbar" aria-labelledby="splash-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="splash-bar"><span class="splash__fill" id="splash-fill"></span></div>
@@ -113,13 +115,13 @@
       <div class="menu__row"><span class="menu__label" id="set-haptics-label"><b data-i18n="set.haptics">Vibrations</b><small id="set-haptics-line" data-i18n="set.hapticsLine"></small></span><button type="button" class="switch" id="set-haptics" role="switch" aria-checked="true" aria-labelledby="set-haptics-label"><span class="switch__knob"></span></button></div>
       <div class="menu__row"><span class="menu__label" id="set-guide-label"><b data-i18n="set.guide">Garder le chant visible</b><small data-i18n="set.guideLine"></small></span><button type="button" class="switch" id="set-guide" role="switch" aria-checked="true" aria-labelledby="set-guide-label"><span class="switch__knob"></span></button></div>
       <div class="menu__row"><span class="menu__label" id="set-calm-label"><b data-i18n="set.calm">Effets apaisés</b><small data-i18n="set.calmLine"></small></span><button type="button" class="switch" id="set-calm" role="switch" aria-checked="true" aria-labelledby="set-calm-label"><span class="switch__knob"></span></button></div>
-      <div class="menu__row"><span class="menu__label"><b data-i18n="set.lang">Langue</b></span><div id="lang"></div></div>
       <p class="menu__version" id="menu-version"></p>
       <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
     </form>
   </dialog>
   <dialog class="map" id="map" aria-labelledby="map-title">
     <form method="dialog">
+      <div class="map__banner" aria-hidden="true"></div>
       <h2 id="map-title" data-i18n="map.title">Ton voyage</h2>
       <p class="map__lede" data-i18n="map.lede"></p>
       <p class="map__score" id="map-score"></p>

@@ -16,6 +16,7 @@ i18n.set('fr'); // Cymora parle français
 const t = i18n.t;
 
 const STEP = 1 / 60;
+const COUNT_IN_BEATS = 2;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
@@ -24,7 +25,7 @@ const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.19.5'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.20.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -35,6 +36,7 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 /** État d'une perle : pas encore, à l'unisson (85 %), en résonance (95 %), parfait (97 %, toutes les tenues). */
 const streakText = (n) => t(n > 1 ? 'streak' : 'streak.one', { n });
 const pearlState = (v) => (v >= G.PERFECT ? 'pearl.perfect' : v >= G.RESONANCE ? 'pearl.res' : v >= G.PASS ? 'pearl.close' : 'pearl.none');
+const rhythmText = (feedback) => t(feedback ? `w.pulse.${feedback.kind}` : 'w.pulse.inTime', { n: (feedback?.index ?? 0) + 1 });
 /** Lancé en local (ce PC ou le réseau de la maison) : l'atelier des prototypes y est visible, jamais en ligne. */
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|.+\.local)$/.test(location.hostname);
 const VERDICT = { resonance: 'w.resonance', close: 'w.close', near: 'w.near', far: 'w.far' }; // verdict → murmure
@@ -59,8 +61,6 @@ const INKS = {
 const CHORUS_INK = '#a58cff';
 /** Grand écran : un panneau à gauche, le champ à droite. Même seuil que la feuille de style. */
 const WIDE = matchMedia('(min-width: 1000px) and (min-height: 560px) and (min-aspect-ratio: 5/4)');
-
-boot();
 
 async function boot() {
   i18n.apply();
@@ -158,9 +158,8 @@ function haptic(pattern) {
  * Rosace d'un chant : sa courbe (de gauche à droite, plus haut = plus loin du centre) répétée six fois
  * en miroir autour du centre. level : 0 esquissée (pas encore accordée), 1 unisson, 2 résonance, 3 parfait.
  */
-function drawRosace(cv, m, level, color) {
+function drawRosace(cv, m, level, color, S = 96) {
   const d = Math.min(2, devicePixelRatio || 1);
-  const S = 96;
   cv.width = cv.height = S * d;
   const g = cv.getContext('2d');
   g.scale(d, d);
@@ -286,8 +285,8 @@ function introOver() {
 function startIntro() {
   const v = $('#splash-video');
   const fallback = () => {
-    if (document.body.classList.contains('has-intro') && !v.error) return; // elle joue déjà : on la laisse
-    v.pause();
+    if (v && document.body.classList.contains('has-intro') && !v.error) return; // elle joue déjà : on la laisse
+    v?.pause();
     document.body.classList.remove('has-intro');
     document.body.classList.add('no-intro');
     introOver();
@@ -427,7 +426,11 @@ class Cymora {
     this.relabel();
     this.syncScore();
     // Ceinture et bretelles : on sauvegarde aussi quand l'app passe en arrière-plan.
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) return;
+      this.save();
+      if (this.herbierPlayback) this.stopHerbier();
+    });
   }
 
   start() {
@@ -561,6 +564,7 @@ class Cymora {
   bindBar() {
     $('#sound').addEventListener('click', () => this.toggleSound());
     this.bindMenu();
+    this.bindHerbier();
     $('#where').addEventListener('click', () => this.openMap());
     const map = $('#map');
     $('#map-daily').addEventListener('click', async () => { await closeDialog(map); this.startDaily(); });
@@ -699,9 +703,39 @@ class Cymora {
   }
 
   /** Herbier : une rosace par chant accordé, plus brillante selon le niveau ; on la touche pour rechanter. */
+  bindHerbier() {
+    this.herbier = $('#herbier');
+    $('#herbier-back').addEventListener('click', () => {
+      this.stopHerbier();
+      this.showHerbierDetail(false);
+      this.herbierSelection?.trigger.focus();
+      this.herbierSelection = null;
+    });
+    $('#herbier-listen').addEventListener('click', () => {
+      if (this.herbierPlayback) this.stopHerbier();
+      else this.playHerbier();
+    });
+    $('#herbier-replay').addEventListener('click', async () => {
+      if (!this.herbier.open || this.herbier.classList.contains('is-closing') || !this.herbierSelection) return;
+      const { chapter, index } = this.herbierSelection;
+      this.stopHerbier();
+      await closeDialog(this.herbier);
+      document.body.dataset.state = 'play';
+      this.cv.focus({ preventScroll: true });
+      this.startTide(chapter, index);
+    });
+    this.herbier.addEventListener('close', () => {
+      this.stopHerbier();
+      this.herbierSelection = null;
+      if (settings.sound && this.audio.enabled && !document.hidden) this.audio.drone(true);
+      this.syncSound();
+    });
+  }
+
   openHerbier() {
     const grid = $('#herbier-grid');
     grid.replaceChildren();
+    this.showHerbierDetail(false);
     G.TIDES.forEach((tide, k) => {
       const row = document.createElement('section');
       row.className = 'herbier__row';
@@ -718,21 +752,89 @@ class Cymora {
         cell.className = 'rosace';
         const label = open ? t('pearl', { n: i + 1, state: t(pearlState(v)) }) : t('herbier.locked', { n: i + 1 });
         cell.title = label;
-        cell.setAttribute('aria-label', open ? `${t('map.play')} · ${label}` : label);
+        cell.setAttribute('aria-label', label);
         const cv = document.createElement('canvas');
         cv.setAttribute('aria-hidden', 'true');
         cell.append(cv);
         drawRosace(cv, open ? G.tideMotif(k, i) : null, v >= G.PERFECT ? 3 : v >= G.RESONANCE ? 2 : v >= G.PASS ? 1 : 0, (INKS[tide.id] ?? INKS.free).guide);
         if (open) {
           cell.type = 'button';
-          cell.addEventListener('click', async () => { await closeDialog($('#herbier')); this.startTide(k, i); });
+          cell.addEventListener('click', () => this.selectHerbier(k, i, cell));
         }
         cells.append(cell);
       }
       row.append(name, cells);
       grid.append(row);
     });
-    openDialog($('#herbier'));
+    this.audio.drone(false);
+    openDialog(this.herbier);
+  }
+
+  showHerbierDetail(show) {
+    $('#herbier-grid').hidden = show;
+    $('#herbier-lede').hidden = show;
+    $('#herbier-detail').hidden = !show;
+  }
+
+  selectHerbier(chapter, index, trigger) {
+    const tide = G.TIDES[chapter];
+    const score = this.progress.best[chapter][index];
+    const motif = G.tideMotif(chapter, index);
+    const trace = this.progress.echoes[chapter][index]?.trace ?? null;
+    this.herbierSelection = { chapter, index, motif, trace, trigger };
+    $('#herbier-name').textContent = t('herbier.name', { chapter: t(`tide.${tide.id}`), n: index + 1 });
+    $('#herbier-note').textContent = t(trace ? 'herbier.duet' : 'herbier.noEcho');
+    const level = score >= G.PERFECT ? 3 : score >= G.RESONANCE ? 2 : score >= G.PASS ? 1 : 0;
+    drawRosace($('#herbier-portrait'), motif, level, INKS[tide.id].guide, 136);
+    this.showHerbierDetail(true);
+    $('#herbier-listen').focus();
+    if (settings.sound) this.playHerbier();
+  }
+
+  async playHerbier() {
+    if (!this.herbierSelection || this.herbierPlayback) return;
+    const status = $('#herbier-status');
+    if (!settings.sound) { status.textContent = t('herbier.muted'); return; }
+    const { motif, trace } = this.herbierSelection;
+    const notes = motif.notes.map(({ at, deg }) => ({ at, freq: G.degreeFreq(deg), echo: false }));
+    const echoAt = motif.duration + 0.65;
+    const echoScale = trace ? Math.min(1, 12 / trace.dur) : 1;
+    if (trace) {
+      for (const point of G.chorusGesture(trace)) {
+        const at = echoAt + point.t * echoScale;
+        const freq = G.yFreq(point.y);
+        const last = notes.at(-1);
+        if (last.echo && at - last.at < (freq === last.freq ? 0.5 : 0.16)) continue;
+        notes.push({ at, freq, echo: true });
+      }
+    }
+    const playback = { notes, next: 0, start: null, end: trace ? echoAt + trace.dur * echoScale + 0.65 : motif.duration + 0.65 };
+    this.herbierPlayback = playback;
+    $('#herbier-listen').textContent = t('herbier.stop');
+    const enabled = this.audio.enabled || await this.audio.enable();
+    if (this.herbierPlayback !== playback) return;
+    if (!enabled) { this.stopHerbier(t('herbier.audioFailed')); return; }
+    status.textContent = t('herbier.songNow');
+    playback.start = performance.now();
+  }
+
+  stepHerbier(now) {
+    const playback = this.herbierPlayback;
+    if (playback?.start == null) return;
+    const time = (now - playback.start) / 1000;
+    while (playback.next < playback.notes.length && playback.notes[playback.next].at <= time) {
+      const i = playback.next++;
+      const note = playback.notes[i];
+      if (note.echo && !playback.notes[i - 1]?.echo) $('#herbier-status').textContent = t('herbier.echoNow');
+      this.audio.note(note.freq, note.echo ? { voice: 'bell', velocity: 0.26 } : { voice: 'glass', velocity: 0.34 });
+    }
+    if (time >= playback.end) this.stopHerbier();
+  }
+
+  stopHerbier(message = '') {
+    this.herbierPlayback = null;
+    $('#herbier-listen').textContent = t('herbier.listen');
+    $('#herbier-status').textContent = message;
   }
 
   /** Les cinq perles d'un chapitre. Avec `pick`, celles des chants déjà atteints se touchent pour rejouer ce chant-là. */
@@ -877,6 +979,7 @@ class Cymora {
   setTone(id) {
     document.body.dataset.tide = id;
     this.inks = INKS[id] ?? INKS.free;
+    this.rhythmFeedback = null;
   }
 
   // ---------------------------------------------------------------- parcours
@@ -929,12 +1032,19 @@ class Cymora {
 
   /** Pulsation : la plaque bat la mesure pendant son chant et pendant ton tour (une onde, un souffle grave). */
   stepBeat() {
-    if (!this.motif?.pulse || (this.phase !== 'call' && this.phase !== 'turn')) { this.beatIdx = null; return; }
-    const b = Math.floor((this.clock - this.phaseAt) / (G.BEAT * this.tempo));
+    const counting = this.phase === 'countIn';
+    const answering = this.phase === 'turn';
+    if (!this.motif?.pulse || (!counting && !answering && this.phase !== 'call')) return;
+    const start = answering ? this.tune?.times?.[0] ?? this.phaseAt : this.phaseAt;
+    const interval = G.BEAT * this.tempo;
+    const b = Math.floor((this.clock - start) / interval);
+    if (counting && b >= COUNT_IN_BEATS) return;
+    this.beatAt = start + b * interval;
     if (b === this.beatIdx) return;
     this.beatIdx = b;
     this.pulse(b % 2 ? 0.1 : 0.16);
-    if (this.phase === 'turn' && this.audio.enabled) this.audio.note(G.degreeFreq(0), { voice: 'breath', velocity: b % 2 ? 0.08 : 0.12 });
+    if (counting) this.whisper(t('w.pulseCount', { n: b + 1 }), Math.ceil(interval * 1000) + 100);
+    if (this.audio.enabled) this.audio.note(G.degreeFreq(0), { voice: 'glass', velocity: counting ? 0.22 : answering ? 0.16 : 0.10 });
   }
 
   startFree() {
@@ -977,7 +1087,7 @@ class Cymora {
       if (this.motif.notes.some((n) => n.hold) && !seen(HOLD_SEEN)) {
         this.lesson = { kind: 'hold', real: this.motif };
         this.setMotif(G.holdLesson(this.motif));
-        this.showCard(t('card.holdNew'), t(FINE ? 'card.holdLessonPc' : 'card.holdLesson'), '', 6500);
+        this.showCard(t('card.holdNew'), t('card.holdLesson'), '', 6500);
         return this.enterInterlude(5, () => this.enterCall());
       }
       if (this.motif.pulse && !seen(PULSE_SEEN)) {
@@ -1007,10 +1117,10 @@ class Cymora {
     if (pulse) {
       // Pulsation : toutes les perles atteintes, et à peu près en mesure.
       const times = this.tune?.times ?? [];
-      const all = this.motif.notes.every((_, i) => times[i] != null);
       const rh = G.rhythmOf(this.motif.notes, times, this.tempo, G.reachTimes(this.motif));
-      ok = all && rh.score >= 0.85;
-      again = t(!all ? 'w.pulseMissed' : rh.drift < 0 ? 'w.pulseRushed' : 'w.pulseDragged');
+      ok = rh.feedback == null;
+      this.rhythmFeedback = rh.feedback;
+      again = rhythmText(rh.feedback);
     }
     if (ok) {
       try { localStorage.setItem(pulse ? PULSE_SEEN : HOLD_SEEN, '1'); } catch { /* on la présentera encore */ }
@@ -1046,6 +1156,8 @@ class Cymora {
   enterCall(quiet = false) {
     this.phase = 'call';
     this.phaseAt = this.clock;
+    this.beatIdx = null;
+    this.rhythmFeedback = null;
     this.tempo = this.attempts || quiet ? 1.25 : 1; // elle rechante plus lentement
     this.nextNote = 0;
     this.stroke = null;
@@ -1060,8 +1172,10 @@ class Cymora {
     if (this.afk) this.afk.stage = 0;
     this.heldNotes = new Set();
     this.tune = null;
-    if (this.lesson?.kind === 'pulse') this.whisper(t('w.pulseTurn'), 15000);
+    this.beatIdx = null;
+    if (this.motif.pulse) this.whisper(t('w.pulseTurn'), 7000);
     else if (this.lesson) this.whisper(t(FINE ? 'w.lessonTurnPc' : 'w.lessonTurn'), 15000);
+    else if (!this.helping && this.motif.notes.some((note) => note.hold)) this.whisper(t('w.holdTurn'), 5500);
     else this.whisper(t(this.helping ? 'w.help' : 'w.turn'), 2600);
   }
 
@@ -1128,25 +1242,30 @@ class Cymora {
     if (this.lesson) return this.judgeLesson();
     const before = G.resonanceScore(this.progress);
     let r = G.attune(this.motif, points, this.passMark);
+    const rhythm = this.motif.pulse ? G.rhythmOf(this.motif.notes, this.tune?.times ?? [], this.tempo, G.reachTimes(this.motif)) : null;
+    this.rhythmFeedback = rhythm?.feedback ?? null;
     if (r.verdict === 'silent') {
-      this.whisper(t('w.silent'), 2200);
+      if (this.rhythmFeedback) {
+        this.whisper(rhythmText(this.rhythmFeedback), 3200);
+        this.attempts++;
+        this.enterInterlude(3, () => this.enterCall());
+      } else this.whisper(t('w.silent'), 2200);
       return;
     }
     // Notes tenues (dès le chapitre II, et dans l'atelier) : chaque tenue manquée retire jusqu'à 30 % du score.
     const holds = this.motif.notes.filter((n) => n.hold).length;
-    let holdLine = '';
+    let detail = '';
     if (holds) {
       const held = Math.min(holds, this.held ?? 0);
       const score = Math.round(r.score * (0.7 + (0.3 * held) / holds) * 1000) / 1000;
       r = { ...r, score, verdict: G.verdictOf(score, this.passMark) };
-      holdLine = ` · ${t('w.holds', { n: held, of: holds })}`;
+      detail = ` · ${t('w.holds', { n: held, of: holds })}`;
     }
-    // Atelier « Pulsation » : le rythme compte pour moitié ; on dit si l'on était pressé, lent ou en mesure.
-    if (this.motif.pulse) {
-      const rh = G.rhythmOf(this.motif.notes, this.tune?.times ?? [], this.tempo, G.reachTimes(this.motif));
-      const score = Math.round(r.score * (0.5 + 0.5 * rh.score) * 1000) / 1000;
-      r = { ...r, score, verdict: G.verdictOf(score, this.passMark), rhythm: rh };
-      holdLine = ` · ${t(rh.score >= 0.8 ? 'w.inTime' : rh.drift < 0 ? 'w.rushed' : 'w.dragged')}`;
+    // Le rythme compte pour moitié et le retour désigne la note à retravailler.
+    if (rhythm) {
+      const score = Math.round(r.score * (0.5 + 0.5 * rhythm.score) * 1000) / 1000;
+      r = { ...r, score, verdict: G.verdictOf(score, this.passMark), rhythm };
+      if (!rhythm.feedback) detail = ` · ${rhythmText(null)}`;
     }
     this.holding = null;
     this.result = r;
@@ -1157,7 +1276,7 @@ class Cymora {
     if (this.mode === 'trial') {
       this.echoNext = pass ? 'next' : 'again';
     } else if (this.mode === 'tide') {
-      const out = G.recordTide(this.progress, this.tideIdx, this.motifIdx, r.score);
+      const out = G.recordTide(this.progress, this.tideIdx, this.motifIdx, r.score, pass ? G.chorusTrace(points) : null);
       this.progress = out.progress;
       this.echoNext = !pass ? 'again' : out.tideDone ? 'tideDone' : this.motifIdx + 1 < G.MOTIFS_PER_TIDE ? 'next' : 'replayDone';
     } else {
@@ -1168,7 +1287,7 @@ class Cymora {
     }
     this.save();
     this.relabel();
-    this.whisper(t(r.score >= G.PERFECT ? 'w.perfect' : VERDICT[r.verdict] ?? 'w.far') + holdLine, 3200);
+    this.whisper(this.rhythmFeedback ? rhythmText(this.rhythmFeedback) : t(r.score >= G.PERFECT ? 'w.perfect' : VERDICT[r.verdict] ?? 'w.far') + detail, 3200);
     if (pass) { this.pulse(r.verdict === 'resonance' ? 1 : 0.6); this.bloom(r.verdict === 'resonance' ? 1 : 0.55); }
     this.showGain(G.resonanceScore(this.progress) - before, Math.round(r.score * 100));
     this.syncScore(true);
@@ -1281,7 +1400,7 @@ class Cymora {
     });
     document.addEventListener('visibilitychange', () => {
       if (!this.audio.enabled) return;
-      this.audio.drone(!document.hidden);
+      this.audio.drone(!document.hidden && !this.herbier.open);
     });
   }
 
@@ -1290,6 +1409,7 @@ class Cymora {
   }
 
   beginTouch(x, y, id) {
+    if (this.phase === 'countIn') return;
     if (this.phase === 'call') { this.whisper(t('w.wait'), 1400); return; }
     if (this.phase === 'idle' && this.mode === 'daily') { this.newMotif(); return; } // rejouer le chant du jour
     if (!this.canDraw()) return;
@@ -1331,8 +1451,9 @@ class Cymora {
     this.feel('note');
     this.pulse(0.22);
     if (want.hold) {
-      this.holding = { deg: want.deg, idx: tune.next - 1, from: this.clock, k: 0, acc: 0, off: 0, done: false };
-      this.whisper(t('w.hold'), 1300);
+      const idx = tune.next - 1;
+      this.holding = { deg: want.deg, idx, point: this.song.notes[idx], k: 0, acc: 0, off: 0, done: false };
+      this.whisper(t('w.hold'));
     }
   }
 
@@ -1373,6 +1494,11 @@ class Cymora {
   frame(ts) {
     const dt = Math.min(0.1, (ts - this.last) / 1000);
     this.last = ts;
+    if (this.herbier.open) {
+      this.stepHerbier(ts);
+      requestAnimationFrame((n) => this.frame(n));
+      return;
+    }
     const work0 = performance.now();
     this.acc = Math.min(this.acc + dt, STEP * 5);
     let steps = 0;
@@ -1424,7 +1550,10 @@ class Cymora {
       h.off = (h.off ?? 0) + STEP;
       if (h.off > 0.25) {
         this.holding = null;
-        this.whisper(t('w.holdLost'), 1400);
+        if (this.lesson?.kind === 'hold') {
+          this.tune.next = 0;
+          this.whisper(t('w.holdReturn'));
+        } else this.whisper(t('w.holdLost'), 1800);
       }
       return;
     }
@@ -1438,7 +1567,7 @@ class Cymora {
     if (before < 0.5 && h.k >= 0.5 && this.audio.enabled) this.audio.note(G.degreeFreq(h.deg), { voice: 'breath', velocity: 0.2, pan: (c.x - 0.5) * 1.2 });
     if (h.k >= 1) {
       h.done = true;
-      h.doneAt = this.clock;
+      this.holdSeal = { point: h.point, time: this.clock };
       this.held = (this.held ?? 0) + 1;
       (this.heldNotes ??= new Set()).add(h.idx);
       this.feel('close');
@@ -1446,6 +1575,7 @@ class Cymora {
       this.bloom(0.35);
       if (this.audio.enabled) this.audio.note(G.degreeFreq(h.deg) * 2, { voice: 'bell', velocity: 0.28, pan: (c.x - 0.5) * 1.2 });
       if (this.lesson?.kind === 'hold') this.endTouch(); // tutoriel : l'anneau fermé suffit, pas besoin de lever le doigt
+      else this.whisper(t(this.tune.next < this.motif.notes.length ? 'w.holdContinue' : 'w.holdRelease'), 2600);
     }
   }
 
@@ -1478,6 +1608,7 @@ class Cymora {
     this.stepHold();
     this.stepBeat();
     if (this.phase === 'call') target = this.stepCall() ?? target;
+    else if (this.phase === 'countIn' && this.clock - this.phaseAt >= COUNT_IN_BEATS * G.BEAT * this.tempo) this.enterTurn();
     else if (this.phase === 'echo') target = this.stepEcho() ?? target;
     else if (this.phase === 'interlude') {
       if (this.clock >= this.interlude.until) { this.hideCard(); const then = this.interlude.then; this.interlude = null; then(); }
@@ -1515,7 +1646,15 @@ class Cymora {
       if (n.hold && this.audio.enabled) for (const delay of [0.35, 0.9]) this.audio.note(G.degreeFreq(n.deg), { voice: 'breath', velocity: 0.22, pan: (pt.x - 0.5) * 1.2, delay: delay * this.tempo });
       this.E.addWake(this.world, pt.x, pt.y, 0, 0, 0.06);
     }
-    if (time > this.motif.duration + 0.7) { this.enterTurn(); return null; }
+    if (time > this.motif.duration + 0.7) {
+      if (this.motif.pulse) {
+        this.phase = 'countIn';
+        this.phaseAt = this.clock;
+        this.beatIdx = null;
+        this.stepBeat();
+      } else this.enterTurn();
+      return null;
+    }
     if (time > this.motif.duration) return { freq: 0, energy: 0.25 };
     return { freq: G.degreeFreq(G.motifDegreeAt(this.motif, time)), energy: 0.78 };
   }
@@ -1525,7 +1664,7 @@ class Cymora {
     const since = this.clock - this.phaseAt;
     const pass = this.result.score >= this.passMark;
     if (!pass) {
-      if (since > 1.6) this.afterEcho();
+      if (since > (this.rhythmFeedback ? 3 : 1.6)) this.afterEcho();
       return { freq: 0, energy: 0.12 };
     }
     const time = since * 1.4;
@@ -1710,6 +1849,7 @@ class Cymora {
     const g = this.ink;
     const { x: ox, y: oy, size } = this.rect;
     const d = this.dpr;
+    const holdRadius = 32 * d;
     g.clearRect(0, 0, this.inkCv.width, this.inkCv.height);
     const inks = this.inks ?? INKS.free;
     this.drawMotes(g, d, inks);
@@ -1792,25 +1932,10 @@ class Cymora {
       g.stroke();
       g.restore();
     };
-    /** Note tenue : un trait épais et lumineux sur toute sa durée, et un anneau qui respire. `upto` (0..1) le déroule. */
+    /** Le cercle distingue la note tenue. Pendant le chant, il se ferme au fil de la note. */
     const holdRing = (n, alpha, upto = 1) => {
       if (!n.hold || alpha <= 0.01) return;
-      const dur = this.motif.duration;
-      const x0 = ox + (0.16 + (0.68 * n.at) / dur) * size;
-      const x1 = ox + (0.16 + (0.68 * (n.at + n.dur * clamp(upto, 0, 1))) / dur) * size;
-      g.save();
-      g.lineCap = 'round';
-      g.strokeStyle = inks.guide;
-      g.shadowColor = inks.guide;
-      g.shadowBlur = 18 * d;
-      g.globalAlpha = alpha * 0.5;
-      g.lineWidth = 11 * d;
-      g.beginPath();
-      g.moveTo(x0, Y(n));
-      g.lineTo(Math.max(x0 + 0.5, x1), Y(n));
-      g.stroke();
-      g.restore();
-      const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.2);
+      const breath = reducedMotion || settings.calm ? 0.5 : 0.5 + 0.5 * Math.sin(this.clock * 2.2);
       ring(X(n), Y(n), (20 + breath * 4) * d, inks.guide, alpha * (0.75 + 0.25 * breath), upto, 2.2);
     };
     /**
@@ -1871,7 +1996,7 @@ class Cymora {
           this.orb(g, X(n), Y(n), (4 + n.dur * 5) * d * (0.5 + 0.5 * bloom), inks.guide, alpha * (0.55 + 0.45 * Math.max(0, 1 - age / n.dur)));
           holdRing(n, Math.max(alpha, 0.6), age / n.dur);
         }
-      } else if (this.phase === 'turn') {
+      } else if (this.phase === 'turn' || this.phase === 'countIn') {
         // À toi : le chant reste en filigrane (selon le chapitre), la première perle respire.
         let alpha = { always: 0.72, call: 0.78, glimpse: 0, none: 0 }[guide];
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
@@ -1879,16 +2004,17 @@ class Cymora {
         const dots = guide === 'glimpse' ? 0.22 : alpha;
         // Jeu relaxant : les pointillés du geste restent visibles pendant tout le tour, quel que soit le chapitre.
         flow(points, 0.75);
-        // La prochaine note tenue à atteindre brille davantage et s'entoure d'un second anneau qui appelle.
+        // La prochaine tenue reste visible. Sa jauge apparaît quand c'est la note à jouer.
         const nextHold = notes.findIndex((n, i) => n.hold && i >= (this.tune && this.touch ? this.tune.next : 0) && !this.heldNotes?.has(i));
         notes.forEach((n, i) => {
           if (dots > 0.01) this.orb(g, X(n), Y(n), (4 + n.dur * 4) * d, inks.guide, dots * 0.85);
           if (!n.hold) return;
           const doneHere = this.heldNotes?.has(i) && this.touch;
-          holdRing(n, doneHere ? 0.35 : i === nextHold ? 1 : Math.max(dots, 0.6)); // une note tenue reste visible, même quand le chant s'efface
-          if (i === nextHold && !(this.holding && !this.holding.done)) {
-            const u = (this.clock * 0.7) % 1;
-            ring(X(n), Y(n), (24 + u * 22) * d, inks.guide, 0.55 * (1 - u), 1, 1.2);
+          const active = this.holding?.idx === i && !this.holding.done;
+          const ready = i === nextHold && (this.lesson?.kind === 'hold' || this.tune?.next === i);
+          holdRing(n, doneHere || active ? 0.35 : ready ? 1 : Math.max(dots, 0.6));
+          if (ready && !active) {
+            ring(X(n), Y(n), holdRadius, inks.guide, 0.68, 1, 1.8);
           }
         });
         if (this.touchedAt == null && guide !== 'none') {
@@ -1918,6 +2044,19 @@ class Cymora {
           const ok = this.heldNotes?.has(i);
           ring(X(n), Y(n), 22 * d, inks.guide, (ok ? 0.95 : 0.9) * show, 1, ok ? 2.4 : 2, ok ? null : [4, 6]);
         });
+      }
+      if (this.motif.pulse && ['call', 'countIn', 'turn'].includes(this.phase) && this.beatIdx != null) {
+        const note = this.phase === 'countIn' || (this.phase === 'turn' && !this.tune?.times?.length)
+          ? notes[0] : notes.find((n) => Math.round(n.at / G.BEAT) === this.beatIdx);
+        const age = clamp((this.clock - this.beatAt) / 0.29, 0, 1);
+        if (note) ring(X(note), Y(note), (reducedMotion || settings.calm ? 22 : 19 + age * 8) * d, '#ffffff', 1 - age, 1, 2.3);
+      }
+      if (this.rhythmFeedback && (this.phase === 'echo' || this.phase === 'interlude')) {
+        const { kind, index } = this.rhythmFeedback;
+        const note = notes[index];
+        if (this.phase === 'interlude') this.drawSong(g, X, Y, d, points, points.length, inks.guide, 0.42);
+        this.orb(g, X(note), Y(note), 9 * d, '#ffd6a8', 0.9);
+        ring(X(note), Y(note), 23 * d, '#fff1d7', 0.95, 1, 2.6, kind === 'missed' ? [5, 4] : null);
       }
     }
 
@@ -1955,13 +2094,6 @@ class Cymora {
       g.arc(X(head), Y(head), r, 0, TAU);
       g.fill();
       g.restore();
-      // Tenue : la jauge se remplit autour du doigt, puis l'anneau éclot et s'efface.
-      const h = this.holding;
-      if (h && !h.done) ring(X(head), Y(head), 26 * d, inks.guide, 0.9, h.k, 2.2);
-      else if (h?.done) {
-        const u = clamp((this.clock - h.doneAt) / 0.7, 0, 1);
-        ring(X(head), Y(head), (26 + 22 * u) * d, inks.guide, 0.9 * (1 - u), 1, 2.2 * (1 - u) + 0.4);
-      }
     }
     else if (this.hover && document.body.dataset.state === 'play') {
       // Orbe-curseur : un halo doux, un anneau fin et un cœur blanc, à la couleur du chapitre.
@@ -1991,6 +2123,23 @@ class Cymora {
       g.arc(hx, hy, 3.6 * d, 0, TAU);
       g.fill();
       g.restore();
+    }
+    if (document.body.dataset.state === 'play') {
+      const h = this.holding;
+      if (this.phase === 'turn' && this.touch && h && !h.done) {
+        const x = X(h.point);
+        const y = Y(h.point);
+        ring(x, y, holdRadius, '#081021', 0.85, 1, 5);
+        ring(x, y, holdRadius, inks.guide, 0.55, 1, 1.8);
+        ring(x, y, holdRadius, '#ffffff', h.off > 0 ? 0.48 : 1, h.k, 3.2);
+      }
+      // L'anneau reste fermé un instant, même quand le tutoriel retire le pointeur.
+      if (this.holdSeal) {
+        const { point, time } = this.holdSeal;
+        const fade = clamp((this.clock - time - 0.45) / 0.55, 0, 1);
+        if (fade >= 1) this.holdSeal = null;
+        else ring(X(point), Y(point), holdRadius, '#ffffff', 1 - fade, 1, 3.2);
+      }
     }
     if (!this.touch && this.fading) {
       const age = this.clock - this.fading.at;
@@ -2287,3 +2436,5 @@ function fatal(message) {
   f.textContent = message;
   f.hidden = false;
 }
+
+boot();

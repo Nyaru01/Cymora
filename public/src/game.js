@@ -197,24 +197,32 @@ export function pulseLesson() {
  * @param {number[]} times instants où le doigt a atteint chaque note (dans l'ordre)
  * @param {number} tempo facteur de lenteur du chant (1 = normal)
  * @param {number[]} [ref] instants de référence (par défaut le début des notes ; voir reachTimes)
- * @returns {{score:number, drift:number}} score 0..1 ; drift < 0 : pressé, > 0 : lent
+ * `feedback` désigne la première note manquée, sinon la note avec le plus grand écart de rythme.
  */
 export function rhythmOf(notes, times, tempo = 1, ref = notes.map((n) => n.at)) {
   const n = notes.length - 1;
-  if (n < 1) return { score: 1, drift: 0 };
+  const missed = notes.findIndex((_, i) => !Number.isFinite(times[i]));
+  const missing = missed < 0 ? null : { kind: 'missed', index: missed };
+  if (n < 1) return { score: 1, drift: 0, feedback: missing };
   let err = 0;
   let drift = 0;
   let counted = 0;
+  let worst = 0;
+  let worstIndex = -1;
   for (let j = 1; j <= n; j++) {
-    if (times[j] == null || times[j - 1] == null) { err += 1; continue; }
+    if (!Number.isFinite(times[j]) || !Number.isFinite(times[j - 1])) { err += 1; continue; }
     const want = (ref[j] - ref[j - 1]) * tempo;
     const ratio = (times[j] - times[j - 1]) / want;
     // ±10 % de marge : la main n'est pas un métronome.
-    err += Math.min(1, Math.max(0, Math.abs(ratio - 1) - 0.1));
-    drift += ratio - 1;
+    const offset = ratio - 1;
+    err += Math.min(1, Math.max(0, Math.abs(offset) - 0.1));
+    drift += offset;
+    if (Math.abs(offset) > Math.abs(worst)) { worst = offset; worstIndex = j; }
     counted++;
   }
-  return { score: round(clamp(1 - (err / n) * 2.5, 0, 1), 3), drift: round(counted ? drift / counted : 0, 3) };
+  const score = round(clamp(1 - (err / n) * 2.5, 0, 1), 3);
+  const feedback = missing ?? (score < PASS && worstIndex >= 0 ? { kind: worst < 0 ? 'early' : 'late', index: worstIndex } : null);
+  return { score, drift: round(counted ? drift / counted : 0, 3), feedback };
 }
 
 /**
@@ -397,7 +405,8 @@ export function validTrace(trace, n = CHORUS_POINTS) {
 export const STORE_VERSION = 1;
 
 export function freshProgress() {
-  return { v: STORE_VERSION, tide: 0, index: 0, best: TIDES.map(() => Array(MOTIFS_PER_TIDE).fill(0)), days: {}, streak: 0, lastDay: null };
+  return { v: STORE_VERSION, tide: 0, index: 0, best: TIDES.map(() => Array(MOTIFS_PER_TIDE).fill(0)),
+    echoes: TIDES.map(() => Array(MOTIFS_PER_TIDE).fill(null)), days: {}, streak: 0, lastDay: null };
 }
 
 /** Relit une progression stockée ; toute valeur hors bornes est réparée plutôt que crue. */
@@ -414,6 +423,14 @@ export function readProgress(raw) {
       return Number.isFinite(v) ? clamp(v, 0, 1) : 0;
     }));
   }
+  if (Array.isArray(data.echoes)) {
+    p.echoes.forEach((row, tide) => row.forEach((_, index) => {
+      const echo = data.echoes[tide]?.[index];
+      if (p.best[tide][index] >= PASS && Number.isFinite(echo?.score) && echo.score >= PASS && echo.score <= p.best[tide][index] && validTrace(echo.trace)) {
+        row[index] = { score: echo.score, trace: { y: [...echo.trace.y], dur: echo.trace.dur } };
+      }
+    }));
+  }
   if (data.days && typeof data.days === 'object') {
     for (const [d, v] of Object.entries(data.days).slice(-60)) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(v)) p.days[d] = clamp(v, 0, 1);
   }
@@ -423,10 +440,17 @@ export function readProgress(raw) {
 }
 
 /** Enregistre une réponse dans la marée ; renvoie ce qui change (motif suivant, marée terminée). */
-export function recordTide(progress, tide, index, score) {
+export function recordTide(progress, tide, index, score, trace = null) {
   const p = structuredClone(progress);
   p.best[tide][index] = Math.max(p.best[tide][index], round(score, 3));
   if (score < PASS) return { progress: p, advanced: false, tideDone: false };
+  if (validTrace(trace)) {
+    p.echoes ??= TIDES.map(() => Array(MOTIFS_PER_TIDE).fill(null));
+    const ranked = round(score, 3);
+    if (ranked >= (p.echoes[tide][index]?.score ?? 0)) {
+      p.echoes[tide][index] = { score: ranked, trace: { y: [...trace.y], dur: trace.dur } };
+    }
+  }
   let tideDone = false;
   if (tide === p.tide && index === p.index) {
     if (index + 1 < MOTIFS_PER_TIDE) p.index = index + 1;

@@ -42,6 +42,16 @@ test('rhythmOf : en mesure, pressé, lent, notes manquées', () => {
   assert.equal(G.rhythmOf(m.notes, slower, 1.25).score, 1, 'le tempo ralenti du rechant est pris en compte');
 });
 
+test('le retour rythmique désigne la première note manquée ou le plus grand écart', () => {
+  const { notes } = G.pulseLesson();
+  assert.equal(G.rhythmOf(notes, [0, 0.62, 1.24, 1.86]).feedback, null);
+  const mixed = G.rhythmOf(notes, [0, 0.30, 1.17, 1.86]);
+  assert.ok(Math.abs(mixed.drift) < 0.01, 'la moyenne seule masque les écarts');
+  assert.deepEqual(mixed.feedback, { index: 1, kind: 'early' });
+  assert.deepEqual(G.rhythmOf(notes, [0, 0.62, 1.62, 2.24]).feedback, { index: 2, kind: 'late' });
+  assert.deepEqual(G.rhythmOf(notes, [0, 0.34, undefined, 1.86]).feedback, { index: 2, kind: 'missed' });
+});
+
 test('aventure : aucune note tenue au chapitre I, puis de plus en plus tôt', () => {
   const count = (t, i) => G.tideMotif(t, i).notes.filter((n) => n.hold).length;
   for (let i = 0; i < G.MOTIFS_PER_TIDE; i++) assert.equal(count(0, i), 0);

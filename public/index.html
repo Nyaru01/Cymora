@@ -122,9 +122,20 @@
   <dialog class="map herbier" id="herbier" aria-labelledby="herbier-title">
     <form method="dialog">
       <h2 id="herbier-title" data-i18n="herbier.title">Herbier</h2>
-      <p class="map__lede" data-i18n="herbier.lede"></p>
+      <p class="map__lede" id="herbier-lede" data-i18n="herbier.lede"></p>
       <div id="herbier-grid"></div>
-      <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
+      <section class="herbier__detail" id="herbier-detail" aria-labelledby="herbier-name" hidden>
+        <button class="link" id="herbier-back" type="button" data-i18n="herbier.back"></button>
+        <canvas id="herbier-portrait" aria-hidden="true"></canvas>
+        <h3 id="herbier-name"></h3>
+        <p class="map__lede" id="herbier-note"></p>
+        <div class="herbier__actions">
+          <button class="enter enter--small" id="herbier-listen" type="button" data-i18n="herbier.listen"></button>
+          <button class="pill" id="herbier-replay" type="button" data-i18n="herbier.replay"></button>
+        </div>
+        <p class="herbier__status" id="herbier-status" role="status"></p>
+      </section>
+      <button class="pill" value="close" data-i18n="herbier.close">Fermer</button>
     </form>
   </dialog>
   <dialog class="map" id="map" aria-labelledby="map-title">

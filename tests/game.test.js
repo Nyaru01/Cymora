@@ -155,6 +155,27 @@ test('la marée avance seulement sur une réponse juste, et garde le meilleur ac
   assert.equal(p.best[0][2], 0.95);
 });
 
+test('une ancienne rosace peut garder un écho sans perdre son meilleur accord', () => {
+  const legacy = readProgress({ v: 1, tide: 0, index: 1, best: [[0.98]] });
+  assert.equal(legacy.echoes[0][0], null);
+  const trace = { y: Array(48).fill(0.4), dur: 2, extra: 'ignoré' };
+  const first = recordTide(legacy, 0, 0, 0.86, trace).progress;
+  assert.equal(first.best[0][0], 0.98);
+  assert.deepEqual(first.echoes[0][0], { score: 0.86, trace: { y: trace.y, dur: 2 } });
+  assert.equal(legacy.echoes[0][0], null);
+  assert.deepEqual(readProgress(JSON.stringify(first)), first);
+
+  const better = recordTide(first, 0, 0, 0.95, { y: Array(48).fill(0.7), dur: 3 }).progress;
+  assert.equal(better.echoes[0][0].trace.dur, 3);
+  assert.deepEqual(recordTide(better, 0, 0, 0.90, trace).progress.echoes, better.echoes);
+  assert.equal(recordTide(first, 0, 1, 0.80, trace).progress.echoes[0][1], null);
+
+  better.echoes[0][0].trace.y[0] = 2;
+  const repaired = readProgress(JSON.stringify(better));
+  assert.equal(repaired.echoes[0][0], null);
+  assert.equal(repaired.best[0][0], 0.98);
+});
+
 test('la série de jours compte les jours consécutifs et s’éteint après un oubli', () => {
   let p = freshProgress();
   p = recordDay(p, '2026-11-24', 0.92);

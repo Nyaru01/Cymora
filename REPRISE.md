@@ -1,13 +1,13 @@
 # Reprendre Cymora — note de passation
 
 > À lire en premier par toute personne (ou tout agent) qui reprend le projet sur une autre machine.
-> État au 25 novembre 2026 : **version 1.19.0**, en ligne et identique à la branche GitHub `Resonance`.
+> Dernière livraison sur `Resonance` le 25 novembre 2026 — **1.20.0**. [Passation de Codex à Claude](docs/PASSATION-CODEX-1.20.0.md).
 
 ## En deux mots
 
 **Cymora** (anciennement « Résonance ») est un jeu musical calme, en PWA. La matière (des grains de lumière sur une plaque circulaire, d'après les figures de Chladni) chante un court motif. Le joueur le retrace du doigt, plus haut pour plus aigu. Quand le geste épouse le chant, la matière se cristallise.
 
-- **Parcours :** 4 chapitres de 5 chants (Voir, Suivre, Se souvenir, Écouter), une *résonance du jour* partagée (le chœur) et une *improvisation* libre.
+- **Parcours** — cinq chapitres de cinq chants (Voir, Suivre, Se souvenir, Écouter, Battre), une *résonance du jour* partagée (le chœur), une *improvisation* libre et un herbier des rosaces.
 - **En ligne :** https://cymora.up.railway.app (Railway, projet `resonance`, services `resonance` et `Postgres`).
 - **Code :** https://github.com/Nyaru01/Cymora, **branche `Resonance`** (et non `main`, qui contient l'ancien projet).
 - **Langue :** tout le texte visible est en **français uniquement** (l'anglais a été retiré exprès).
@@ -19,7 +19,7 @@ git clone -b Resonance https://github.com/Nyaru01/Cymora.git cymora
 cd cymora
 npm ci
 npm start            # http://127.0.0.1:4173 (variable PORT pour changer)
-npm test             # node:test, 75 tests, doivent tous passer
+npm test             # node:test
 npm run audit:public # aucun secret ni donnée perso dans ce qui est publié
 ```
 
@@ -32,6 +32,8 @@ npm run audit:public # aucun secret ni donnée perso dans ce qui est publié
 - Le serveur inventorie `public/` **au démarrage**. Après l'ajout d'un fichier, il faut redémarrer le serveur.
 
 ## Déployer
+
+Le service Railway est relié à `Resonance` pour le déploiement automatique. Utiliser la CLI ci-dessous si un déploiement manuel est nécessaire et autorisé.
 
 ```powershell
 railway login
@@ -51,6 +53,7 @@ railway up --ci --service resonance
   $env:GIT_AUTHOR_EMAIL="quatre-agents@users.noreply.github.com"; $env:GIT_COMMITTER_EMAIL=$env:GIT_AUTHOR_EMAIL
   ```
 - **Git :** ne jamais faire de `force push` ni de `reset --hard`. Pousser (`git push origin HEAD:Resonance`) **seulement quand le propriétaire le demande**. On peut déployer sur Railway pour lui montrer.
+- **Passation** — à chaque publication, l’agent qui livre ajoute un `.md` dans `docs/` pour l’autre agent et le référence ici. Y indiquer la version, les changements, les vérifications et les points ouverts. Cette règle vaut pour Claude et Codex.
 - **Sécurité :** la CSP est stricte, donc pas de style ni de script en ligne dans le HTML (fixer un style depuis JS est permis). Pas de dépendance externe côté client.
 
 ## Où est quoi

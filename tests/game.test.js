@@ -79,11 +79,11 @@ test('suivre le chant entre en résonance, quel que soit le tempo', () => {
   }
 });
 
-test('un contour juste mais transposé d’un degré passe, sans résonner pleinement', () => {
+test('un contour juste mais transposé d’un degré approche, sans passer (90 % exigés)', () => {
   for (let i = 0; i < MOTIFS_PER_TIDE; i++) {
     const m = tideMotif(2, i);
     const r = attune(m, follow(m, { offset: 1 }));
-    assert.ok(r.score >= PASS && r.score < RESONANCE, `${r.score}`);
+    assert.ok(r.score < PASS && r.verdict === 'near', `${r.score}`);
   }
 });
 
@@ -140,14 +140,14 @@ test('la marée avance seulement sur une réponse juste, et garde le meilleur ac
 
 test('la série de jours compte les jours consécutifs et s’éteint après un oubli', () => {
   let p = freshProgress();
-  p = recordDay(p, '2026-11-24', 0.7);
-  p = recordDay(p, '2026-11-25', 0.9);
+  p = recordDay(p, '2026-11-24', 0.92);
+  p = recordDay(p, '2026-11-25', 0.93);
   assert.equal(p.streak, 2);
-  p = recordDay(p, '2026-11-25', 0.95); // rejouer le même jour ne compte pas deux fois
+  p = recordDay(p, '2026-11-25', 0.97); // rejouer le même jour ne compte pas deux fois
   assert.equal(p.streak, 2);
   assert.equal(liveStreak(p, '2026-11-26'), 2);
   assert.equal(liveStreak(p, '2026-11-27'), 0);
-  p = recordDay(p, '2026-11-28', 0.8);
+  p = recordDay(p, '2026-11-28', 0.91);
   assert.equal(p.streak, 1);
   assert.equal(dayBefore('2026-03-01'), '2026-02-28');
 });

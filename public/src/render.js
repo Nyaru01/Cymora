@@ -134,7 +134,7 @@ void main() {
   // Cyan au cœur de la plaque, violet vers le bord : la lumière de l'emblème.
   float r = length(v_pos - u_plate.xy) / u_plate.z;
   float rim = smoothstep(0.42, 1.0, r);
-  float edge = 1.0 - smoothstep(1.02, 1.12, r); // hors de la plaque, la matière s'éteint
+  float edge = 1.0 - smoothstep(0.99, 1.3, r); // hors de la plaque, la matière s'éteint
   vec3 base = palette(v_attr.x) * (0.55 + v_attr.x * 0.45) * mix(vec3(1.0), vec3(1.15, 0.78, 1.2), rim);
   vec3 lum = mix(vec3(0.3, 0.92, 1.0), vec3(0.66, 0.46, 1.0), rim) * light * 0.5;
   o = vec4((base + lum) * v_attr.z * u_gain * edge, v_attr.z * edge);
@@ -153,7 +153,7 @@ void main() {
   float a = exp(-r * 3.5) * v_attr.y * v_attr.z;
   float rr = length(v_pos - u_plate.xy) / u_plate.z;
   float rim = smoothstep(0.42, 1.0, rr);
-  a *= 1.0 - smoothstep(1.02, 1.12, rr);
+  a *= 1.0 - smoothstep(0.99, 1.45, rr);
   o = vec4(mix(vec3(0.35, 0.8, 1.0), vec3(0.6, 0.45, 1.0), rim) * a * 0.3, a * 0.4); // halo cyan puis violet
 }`;
 

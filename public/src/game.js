@@ -9,8 +9,9 @@ export const DEGREES = STEPS.length; // 11
 const BASE_MIDI = 57; // La3, 220 Hz
 const MARGIN = 0.1; // la gamme occupe le champ sans toucher les bords
 
-export const PASS = 0.6; // « presque à l'unisson » : on avance
-export const RESONANCE = 0.8; // « en résonance » : la matière se cristallise
+export const PASS = 0.9; // « à l'unisson » : on passe au chant suivant (90 % au moins)
+export const RESONANCE = 0.95; // « en résonance » : la matière se cristallise
+export const NEAR = 0.7; // « presque » : encourageant, mais on rechante
 export const MOTIFS_PER_TIDE = 5;
 
 /**
@@ -191,7 +192,7 @@ function dtw(a, b, cap = 3) {
  * Accord entre un motif et une réponse.
  * @param {object} m motif
  * @param {{t:number, y:number}[]} gesture points du geste (temps en secondes, y dans [0,1])
- * @returns {{score:number, verdict:'resonance'|'close'|'far'|'silent', distance:number}}
+ * @returns {{score:number, verdict:'resonance'|'close'|'near'|'far'|'silent', distance:number}}
  */
 export function attune(m, gesture) {
   const pts = (gesture ?? []).filter((p) => p && Number.isFinite(p.t) && Number.isFinite(p.y));
@@ -226,7 +227,7 @@ export function attune(m, gesture) {
   const answerRange = sorted[Math.floor(sorted.length * 0.9)] - sorted[Math.floor(sorted.length * 0.1)];
   distance += Math.max(0, targetRange * 0.6 - answerRange) * 0.45;
   const score = round(clamp(1 - distance / 1.5, 0, 1), 3);
-  const verdict = score >= RESONANCE ? 'resonance' : score >= PASS ? 'close' : 'far';
+  const verdict = score >= RESONANCE ? 'resonance' : score >= PASS ? 'close' : score >= NEAR ? 'near' : 'far';
   return { score, verdict, distance: round(distance, 3) };
 }
 

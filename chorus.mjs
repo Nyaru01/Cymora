@@ -7,7 +7,7 @@
 // Avec DATABASE_URL (Railway Postgres), les traces vivent dans la base ; sans elle (poste local, tests),
 // dans la mémoire du processus.
 
-import { PASS, attune, chorusGesture, dailyMotif, validTrace } from './public/src/game.js';
+import { PASS, RESONANCE, attune, chorusGesture, dailyMotif, validTrace } from './public/src/game.js';
 
 export const RETENTION_DAYS = 45;
 const SHOWN = 24; // traces renvoyées au plus
@@ -51,7 +51,7 @@ export async function createChorus({ url = process.env.DATABASE_URL, log = conso
       },
       async get(day) {
         const [{ rows: [c] }, { rows }] = await Promise.all([
-          pool.query('SELECT count(*)::int AS voices, count(*) FILTER (WHERE score >= 0.8)::int AS resonant FROM chorus WHERE day = $1', [day]),
+          pool.query('SELECT count(*)::int AS voices, count(*) FILTER (WHERE score >= $2)::int AS resonant FROM chorus WHERE day = $1', [day, RESONANCE]),
           // Les plus justes d'abord, mêlées d'un peu de hasard pour que le chœur change au fil du jour.
           pool.query('SELECT trace, dur FROM chorus WHERE day = $1 ORDER BY score * (0.85 + random() * 0.3) DESC LIMIT $2', [day, SHOWN]),
         ]);
@@ -79,7 +79,7 @@ function memoryChorus() {
     async get(day) {
       const list = days.get(day) ?? [];
       const best = [...list].sort((a, b) => b.score - a.score).slice(0, SHOWN);
-      return { day, voices: list.length, resonant: list.filter((e) => e.score >= 0.8).length, traces: best.map((e) => e.trace) };
+      return { day, voices: list.length, resonant: list.filter((e) => e.score >= RESONANCE).length, traces: best.map((e) => e.trace) };
     },
     close: async () => {},
   };

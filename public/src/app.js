@@ -24,6 +24,7 @@ const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures a
 const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
 const COUNT = 12000;
 const ROMAN = ['I', 'II', 'III', 'IV'];
+const VERDICT = { resonance: 'w.resonance', close: 'w.close', near: 'w.near', far: 'w.far' }; // verdict → murmure
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 /** Lit une clé, ou son ancien nom d'avant Cymora. */
@@ -279,6 +280,7 @@ class Cymora {
   feel(kind) {
     if (kind === 'resonance') haptic([14, 60, 26]);
     else if (kind === 'close') haptic(18);
+    else if (kind === 'near') haptic([10, 50, 10]);
     else if (kind === 'far') haptic([8, 70, 8]);
     else if (kind === 'done') haptic([20, 70, 20, 70, 40]);
     else if (kind === 'touch') haptic(6);
@@ -286,12 +288,15 @@ class Cymora {
     const scene = $('#scene');
     scene.classList.remove('is-yes', 'is-no');
     void scene.offsetWidth;
-    scene.classList.add(kind === 'far' ? 'is-no' : 'is-yes');
+    scene.classList.add(kind === 'far' || kind === 'near' ? 'is-no' : 'is-yes');
   }
 
   // ---------------------------------------------------------------- seuil et barre
 
   bindThreshold() {
+    this.lastInput = performance.now();
+    const alive = () => { this.lastInput = performance.now(); };
+    for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, alive, { passive: true });
     const go = async (withSound, then) => {
       if (withSound) await this.audio.enable();
       if (this.audio.enabled) this.audio.drone(true);
@@ -427,7 +432,7 @@ class Cymora {
     if (this.result && this.mode !== 'free' && this.result.verdict !== 'silent') {
       const b = document.createElement('b');
       b.textContent = t('side.score', { n: Math.round(this.result.score * 100) });
-      score.append(b, t(this.result.verdict === 'resonance' ? 'w.resonance' : this.result.verdict === 'close' ? 'w.close' : 'w.far'));
+      score.append(b, t(VERDICT[this.result.verdict] ?? 'w.far'));
     }
     $('#side-chorus').textContent = this.mode === 'daily' ? this.chorusLine() : '';
   }
@@ -542,6 +547,7 @@ class Cymora {
     this.trace = G.motifTrace(this.motif);
     this.song = songOf(this.motif);
     this.attempts = 0;
+    this.afk = { stage: 0, replays: 0, next: 0, stir: 0 };
     this.updateSide();
     this.enterCall();
   }
@@ -556,20 +562,74 @@ class Cymora {
     return this.attempts >= 2 && this.guide !== 'always';
   }
 
-  enterCall() {
+  enterCall(quiet = false) {
     this.phase = 'call';
     this.phaseAt = this.clock;
-    this.tempo = this.attempts ? 1.25 : 1; // elle rechante plus lentement
+    this.tempo = this.attempts || quiet ? 1.25 : 1; // elle rechante plus lentement
     this.nextNote = 0;
     this.stroke = null;
-    this.whisper(t('w.call'), 1800);
+    if (!quiet) this.whisper(t('w.call'), 1800);
   }
 
   enterTurn() {
     this.phase = 'turn';
     this.phaseAt = this.clock;
     this.touchedAt = null;
+    if (this.afk) this.afk.stage = 0;
     this.whisper(t(this.helping ? 'w.help' : 'w.turn'), 2600);
+  }
+
+  /**
+   * Personne ne trace : Cymora s'impatiente avec douceur. Elle appelle (7 s), puis rechante
+   * d'elle-même (16 s, deux fois au plus, sans compter d'essai), puis fredonne seule de temps en temps.
+   */
+  stepWaiting() {
+    const a = this.afk ??= { stage: 0, replays: 0, next: 0, stir: 0 };
+    const idle = this.clock - this.phaseAt;
+    if (a.stage === 0 && idle > 7) {
+      a.stage = 1;
+      this.whisper(t('afk.1'), 3200);
+      this.yearn(0.2);
+    } else if (a.stage === 1 && idle > 16) {
+      if (a.replays < 2) {
+        a.replays++;
+        this.whisper(t('afk.2'), 3000);
+        this.enterCall(true);
+        return null;
+      }
+      a.stage = 2;
+      a.next = this.clock + 4;
+    } else if (a.stage === 2 && this.clock >= a.next) {
+      a.next = this.clock + 24;
+      this.whisper(t(`afk.${3 + Math.floor(Math.random() * 3)}`), 3600);
+      this.yearn(0.16);
+    }
+    return this.clock < a.stir ? { freq: G.degreeFreq(this.motif.notes[0].deg), energy: 0.32 } : null;
+  }
+
+  /** Sur le seuil, après 20 s sans geste : Cymora fredonne seule et aimerait qu'on la rejoigne. */
+  longing() {
+    const now = performance.now();
+    const on = document.body.dataset.state === 'threshold' && now - this.lastInput > 20000;
+    if (on !== this.longingOn) {
+      this.longingOn = on;
+      $('#threshold').classList.toggle('is-longing', on);
+      this.longAt = 0;
+    }
+    if (on && now - this.longAt > 7000) {
+      this.longAt = now;
+      this.pulse(0.45);
+      this.E.addWake(this.world, 0.5, 0.5, 0, 0, 0.1);
+    }
+  }
+
+  /** Elle manifeste l'envie de jouer : une onde, la matière qui frémit, sa première note fredonnée. */
+  yearn(velocity) {
+    this.pulse(0.35);
+    if (this.afk) this.afk.stir = this.clock + 1.4;
+    const start = this.pointAt(0);
+    this.E.addWake(this.world, start.x, start.y, 0, 0, 0.08);
+    if (this.audio.enabled) this.audio.note(G.degreeFreq(this.motif.notes[0].deg), { voice: 'breath', velocity });
   }
 
   enterInterlude(seconds, then) {
@@ -602,7 +662,7 @@ class Cymora {
     }
     this.save();
     this.relabel();
-    this.whisper(t(r.verdict === 'resonance' ? 'w.resonance' : r.verdict === 'close' ? 'w.close' : 'w.far'), 3200);
+    this.whisper(t(VERDICT[r.verdict] ?? 'w.far'), 3200);
     if (pass) this.pulse(r.verdict === 'resonance' ? 1 : 0.6);
     this.showGain(G.resonanceScore(this.progress) - before, Math.round(r.score * 100));
     this.syncScore(true);
@@ -705,6 +765,10 @@ class Cymora {
     this.cursor = { x, y };
     if (this.phase === 'turn') {
       this.stroke = [{ t: this.clock, y }];
+      if (this.touchedAt == null && this.afk && (this.afk.stage > 0 || this.afk.replays > 0)) {
+        this.whisper(t('afk.back'), 1600); // Te revoilà.
+        this.afk.replays = 0;
+      }
       this.touchedAt ??= this.clock;
     }
     this.E.addWake(this.world, x, y, 0, 0, 0.05);
@@ -755,6 +819,7 @@ class Cymora {
       this.acc -= STEP;
       steps++;
     }
+    this.longing();
     this.draw();
     const work = (performance.now() - work0) / Math.max(1, steps);
     this.frameMs += (work - this.frameMs) * 0.05;
@@ -804,6 +869,7 @@ class Cymora {
       if (this.clock >= this.interlude.until) { this.hideCard(); const then = this.interlude.then; this.interlude = null; then(); }
       else target = this.breathe();
     } else if (this.phase === 'free') target = this.stepFree() ?? target;
+    else if (this.phase === 'turn' && !this.touch && this.touchedAt == null && this.mode !== 'free') target = this.stepWaiting() ?? target;
     else if (!this.touch && (this.phase === 'idle' || this.mode === 'menu')) target = this.breathe();
 
     if (target?.freq) {
@@ -982,6 +1048,10 @@ class Cymora {
   }
 
   draw() {
+    // Pendant qu'elle chante, et tant qu'on n'a pas répondu, la matière s'assombrit : son tracé se lit.
+    const listening = (this.mode === 'tide' || this.mode === 'daily') && (this.phase === 'call' || (this.phase === 'turn' && this.touchedAt == null))
+      && (this.helping ? 'always' : this.guide) !== 'none';
+    if (listening !== this.listening) { this.listening = listening; $('#scene').classList.toggle('is-listening', listening); }
     const { ctx, cv } = this;
     if (this.renderer.lost && this.renderer.kind !== '2d') {
       this.renderer = createRenderer({ prefer: '2d' });
@@ -1085,7 +1155,7 @@ class Cymora {
         const time = (this.clock - this.phaseAt) / this.tempo;
         let upto = 0;
         while (upto < points.length && points[upto].at <= time) upto++;
-        const alpha = { always: 0.9, call: 0.85, glimpse: 0.3, none: 0 }[guide];
+        const alpha = { always: 1, call: 1, glimpse: 0.45, none: 0 }[guide];
         this.drawSong(g, X, Y, d, points, upto, inks.guide, alpha);
         for (const n of notes) {
           const age = time - n.at;
@@ -1095,11 +1165,11 @@ class Cymora {
         }
       } else if (this.phase === 'turn') {
         // À toi : le chant reste en filigrane (selon la marée), la première perle respire.
-        let alpha = { always: 0.42, call: 0.5, glimpse: 0, none: 0 }[guide];
+        let alpha = { always: 0.72, call: 0.78, glimpse: 0, none: 0 }[guide];
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
-        this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha * 0.6);
+        this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha);
         const dots = guide === 'glimpse' ? 0.22 : alpha;
-        for (const n of notes) if (dots > 0.01) this.orb(g, X(n), Y(n), (3 + n.dur * 4) * d, inks.guide, dots * 0.7);
+        for (const n of notes) if (dots > 0.01) this.orb(g, X(n), Y(n), (4 + n.dur * 4) * d, inks.guide, dots * 0.85);
         if (this.touchedAt == null && guide !== 'none') {
           const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.4);
           const start = points[0];
@@ -1196,16 +1266,23 @@ class Cymora {
     g.lineCap = 'round';
     g.lineJoin = 'round';
     g.strokeStyle = color;
-    for (const [w, a] of [[16, 0.06], [7, 0.14]]) {
+    for (const [w, a] of [[20, 0.08], [9, 0.2]]) {
       g.lineWidth = w * d;
       g.globalAlpha = alpha * a;
       path();
       g.stroke();
     }
-    g.lineWidth = 1.4 * d;
-    g.globalAlpha = alpha * 0.85;
+    g.lineWidth = 3.6 * d;
+    g.globalAlpha = alpha * 0.95;
     g.shadowColor = color;
-    g.shadowBlur = 12 * d;
+    g.shadowBlur = 16 * d;
+    path();
+    g.stroke();
+    // Cœur blanc : la ligne reste lisible quelle que soit la couleur de la marée.
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(255,255,255,1)';
+    g.lineWidth = 1.6 * d;
+    g.globalAlpha = alpha * 0.95;
     path();
     g.stroke();
     g.restore();
@@ -1235,14 +1312,18 @@ class Cymora {
     const R = size * 0.47;
     const e = clamp(this.energy, 0, 1);
     g.save();
-    // Pas de trait : une lueur qui naît et meurt de part et d'autre du bord.
-    const inner = R * 0.9;
-    const outer = R * 1.1;
+    // Pas de trait : une lueur qui naît juste avant le bord puis se dissout loin dans la nuit,
+    // plus vive et plus large quand la matière vibre.
+    const inner = R * 0.86;
+    const outer = R * (1.75 + e * 0.35);
+    const at = (r) => (r - inner) / (outer - inner);
     const glow = g.createRadialGradient(cx, cy, inner, cx, cy, outer);
     glow.addColorStop(0, rgba(CHORUS_INK, 0));
-    glow.addColorStop(0.5, rgba(CHORUS_INK, 0.07 + e * 0.1));
-    glow.addColorStop(0.56, rgba(inks.guide, 0.04 + e * 0.07));
-    glow.addColorStop(1, rgba(inks.guide, 0));
+    glow.addColorStop(at(R * 0.99), rgba(CHORUS_INK, 0.08 + e * 0.12));
+    glow.addColorStop(at(R * 1.05), rgba(inks.guide, 0.06 + e * 0.09));
+    glow.addColorStop(at(R * 1.22), rgba(inks.guide, 0.03 + e * 0.045));
+    glow.addColorStop(at(R * 1.45), rgba(CHORUS_INK, 0.012 + e * 0.018));
+    glow.addColorStop(1, rgba(CHORUS_INK, 0));
     g.fillStyle = glow;
     g.beginPath();
     g.arc(cx, cy, outer, 0, TAU);

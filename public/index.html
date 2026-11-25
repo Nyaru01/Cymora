@@ -69,9 +69,12 @@
 
   <section class="threshold" id="threshold" aria-labelledby="title">
     <h1 class="threshold__title" id="title"><img class="threshold__logo" src="./icons/cymora-hero.jpg" alt="Cymora" width="880" height="880"></h1>
-    <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
+    <div class="threshold__lines" aria-live="polite">
+      <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
+      <p class="threshold__line threshold__longing" data-i18n="afk.home">Cymora fredonne, seule. Elle aimerait chanter avec toi.</p>
+    </div>
     <div class="threshold__actions">
-      <button type="button" class="enter" id="begin"><span id="begin-label" data-i18n="begin">Commencer</span> <span class="enter__soft" data-i18n="withSound">avec le son</span></button>
+      <button type="button" class="enter" id="begin"><span id="begin-label" data-i18n="begin">Commencer</span></button>
       <!-- Compatibilité : l'ancienne version (encore en cache chez certains) cherche ce bouton au démarrage. -->
       <button type="button" id="begin-quiet" hidden tabindex="-1" aria-hidden="true"></button>
     </div>

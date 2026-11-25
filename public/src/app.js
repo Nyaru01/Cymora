@@ -17,6 +17,9 @@ const t = i18n.t;
 const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
+const SEEN = 'cymora.prologue.v1';
+const PULSE = 2.6; // durée d'une onde de résonance (s)
+const TAU = Math.PI * 2;
 const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
 const COUNT = 12000;
 const ROMAN = ['I', 'II', 'III', 'IV'];
@@ -45,6 +48,8 @@ async function boot() {
   i18n.apply();
   mountLangSwitch($('#lang'), i18n);
   document.title = t('meta.title');
+  const began = performance.now();
+  splashProgress(0.08);
   let E;
   let D = null;
   try {
@@ -54,13 +59,55 @@ async function boot() {
     return;
   }
   try { D = await import('./phrase.js'); } catch { /* improvisation indisponible : le jeu reste */ }
+  splashProgress(0.2);
   const app = new Cymora(E, D);
   i18n.onChange(() => app.relabel());
   if (new URLSearchParams(location.search).has('debug')) globalThis.__cymora = app; // QA uniquement
   app.start();
+  // Toutes les figures sont préparées pendant le chargement : plus aucun à-coup en jouant.
+  await app.prepare((k) => splashProgress(0.2 + 0.8 * k));
+  await openThreshold(began);
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('./sw.js').catch(() => { /* hors ligne indisponible : l'app marche quand même */ });
   }
+}
+
+function splashProgress(k) {
+  const v = Math.round(clamp(k, 0, 1) * 100);
+  $('#splash-fill').style.transform = `scaleX(${v / 100})`;
+  $('#splash-bar').setAttribute('aria-valuenow', String(v));
+}
+
+/** Fin du chargement. Au premier lancement, le prologue se lit avant d'entrer ; ensuite, on entre directement. */
+async function openThreshold(began) {
+  let seen = false;
+  try { seen = Boolean(localStorage.getItem(SEEN)); } catch { seen = false; }
+  const splash = $('#splash');
+  splash.classList.add('is-ready');
+  if (seen && !new URLSearchParams(location.search).has('prologue')) {
+    await new Promise((r) => setTimeout(r, Math.max(0, 1100 - (performance.now() - began))));
+    document.body.dataset.state = 'threshold';
+    return;
+  }
+  const lines = [...$('#prologue').children];
+  $('#prologue').hidden = false;
+  const enter = $('#splash-enter');
+  const skip = $('#splash-skip');
+  skip.hidden = false;
+  const timers = [];
+  const showAll = () => {
+    timers.forEach(clearTimeout);
+    lines.forEach((l) => l.classList.add('is-on'));
+    skip.hidden = true;
+    enter.hidden = false;
+    enter.focus({ preventScroll: true });
+  };
+  lines.forEach((l, i) => timers.push(setTimeout(() => l.classList.add('is-on'), 500 + i * (reducedMotion ? 300 : 2600))));
+  timers.push(setTimeout(showAll, 500 + lines.length * (reducedMotion ? 300 : 2600)));
+  skip.addEventListener('click', showAll, { once: true });
+  await new Promise((r) => enter.addEventListener('click', r, { once: true }));
+  try { localStorage.setItem(SEEN, '1'); } catch { /* sans stockage : le prologue reviendra */ }
+  document.body.dataset.state = 'threshold';
 }
 
 class Cymora {
@@ -218,10 +265,12 @@ class Cymora {
     let kicker = '';
     let title = '';
     let line = '';
+    let story = '';
     if (this.mode === 'tide') {
       const id = G.TIDES[this.tideIdx].id;
-      kicker = `${t('card.tide', { n: ROMAN[this.tideIdx] })} · ${Math.min(G.MOTIFS_PER_TIDE, (this.motifIdx ?? 0) + 1)}/${G.MOTIFS_PER_TIDE}`;
+      kicker = `${t('story.chapter', { n: this.tideIdx + 1 })} · ${Math.min(G.MOTIFS_PER_TIDE, (this.motifIdx ?? 0) + 1)}/${G.MOTIFS_PER_TIDE}`;
       title = t(`tide.${id}`);
+      story = t(`story.${id}`);
       line = t(`line.${id}`);
     } else if (this.mode === 'daily') {
       kicker = this.today;
@@ -234,6 +283,7 @@ class Cymora {
     }
     $('#side-kicker').textContent = kicker;
     $('#side-title').textContent = title;
+    $('#side-story').textContent = story;
     $('#side-line').textContent = line;
     $('#side-pearls').replaceChildren(...(this.mode === 'tide' ? [this.pearlsFor(this.tideIdx)] : []));
     const score = $('#side-score');
@@ -306,8 +356,9 @@ class Cymora {
     this.motifIdx = k === this.progress.tide ? this.progress.index : 0;
     this.setTone(G.TIDES[k].id);
     this.relabel();
-    this.showCard(t('card.tide', { n: ROMAN[k] }) + ' · ' + t(`tide.${G.TIDES[k].id}`), t(`line.${G.TIDES[k].id}`));
-    this.enterInterlude(4.2, () => this.newMotif());
+    const id = G.TIDES[k].id;
+    this.showCard(t('card.tide', { n: ROMAN[k] }) + ' · ' + t(`tide.${id}`), t(`story.${id}`), t(`line.${id}`), 7000);
+    this.enterInterlude(5.6, () => this.newMotif());
   }
 
   startDaily() {
@@ -342,7 +393,8 @@ class Cymora {
     this.tideIdx = G.TIDES.length - 1;
     this.setTone('listen');
     this.relabel();
-    this.showCard(t('card.end'), t('card.endLine'));
+    this.showCard(t('card.end'), t('card.endLine'), '', 10000);
+    this.pulse(1.6);
     this.phase = 'idle';
   }
 
@@ -410,6 +462,7 @@ class Cymora {
     this.save();
     this.relabel();
     this.whisper(t(r.verdict === 'resonance' ? 'w.resonance' : r.verdict === 'close' ? 'w.close' : 'w.far'), 3200);
+    if (pass) this.pulse(r.verdict === 'resonance' ? 1 : 0.6);
     if (pass && this.audio.enabled) {
       const freqs = [...new Set(this.motif.notes.map((n) => G.degreeFreq(n.deg)))].sort((a, b) => a - b);
       this.audio.chord(freqs, { velocity: r.verdict === 'resonance' ? 0.45 : 0.3 });
@@ -427,8 +480,9 @@ class Cymora {
       return this.newMotif();
     }
     if (next === 'tideDone') {
-      this.showCard(t('card.done', { n: ROMAN[this.tideIdx] }), '');
-      return this.enterInterlude(3, () => this.startTide(this.tideIdx + 1));
+      this.showCard(t('card.done', { n: ROMAN[this.tideIdx] }), t(`after.${G.TIDES[this.tideIdx].id}`), '', 5200);
+      this.pulse(1.4);
+      return this.enterInterlude(5, () => this.startTide(this.tideIdx + 1));
     }
     if (next === 'replayDone') {
       this.showCard(t('card.done', { n: ROMAN[this.tideIdx] }), '');
@@ -690,6 +744,20 @@ class Cymora {
     return best;
   }
 
+  /** Une onde part du centre et traverse la plaque. */
+  pulse(strength) {
+    this.pulses = [...(this.pulses ?? []).filter((p) => this.clock - p.at < PULSE), { at: this.clock, k: strength }];
+  }
+
+  /** Prépare toutes les figures en tranches, sans geler la page. */
+  async prepare(onProgress) {
+    for (let i = 0; i < MODES.length; i++) {
+      this.field(i);
+      onProgress((i + 1) / MODES.length);
+      if (i % 3 === 2) await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
   field(i) {
     let f = this.fields.get(i);
     if (!f) {
@@ -770,6 +838,7 @@ class Cymora {
     const d = this.dpr;
     g.clearRect(0, 0, this.inkCv.width, this.inkCv.height);
     const inks = this.inks ?? INKS.free;
+    this.drawPlate(g, ox, oy, size, d, inks);
     const line = (path, color, width, alpha, upto = path.length, dash = null) => {
       if (upto < 2 || alpha <= 0.01) return;
       g.save();
@@ -851,6 +920,50 @@ class Cymora {
     }
   }
 
+  /** Le bord de la plaque : un anneau de verre gradué, plus vif quand la matière vibre ; et les ondes de résonance. */
+  drawPlate(g, ox, oy, size, d, inks) {
+    const cx = ox + size / 2;
+    const cy = oy + size / 2;
+    const R = size * 0.47;
+    const e = clamp(this.energy, 0, 1);
+    g.save();
+    const ring = g.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+    ring.addColorStop(0, inks.guide);
+    ring.addColorStop(1, CHORUS_INK);
+    g.strokeStyle = ring;
+    g.lineWidth = d;
+    g.globalAlpha = 0.12 + e * 0.18;
+    g.beginPath();
+    g.arc(cx, cy, R + 5 * d, 0, TAU);
+    g.stroke();
+    // Graduations : elles tournent très lentement, comme une plaque posée sur un plateau.
+    g.globalAlpha = 0.07 + e * 0.13;
+    g.beginPath();
+    const turn = reducedMotion ? 0 : this.clock * 0.012;
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * TAU + turn;
+      const r1 = R + 9 * d;
+      const r2 = R + (i % 8 === 0 ? 16 : 12) * d;
+      g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    }
+    g.stroke();
+    for (const p of this.pulses ?? []) {
+      const age = (this.clock - p.at) / PULSE;
+      if (age >= 1) continue;
+      const ease = 1 - (1 - age) ** 3;
+      g.globalAlpha = (1 - age) * 0.55 * p.k;
+      g.lineWidth = (1 + 2.5 * (1 - age)) * d;
+      g.strokeStyle = inks.guide;
+      g.shadowColor = inks.guide;
+      g.shadowBlur = 26 * d;
+      g.beginPath();
+      g.arc(cx, cy, R * (0.06 + ease * 0.98), 0, TAU);
+      g.stroke();
+    }
+    g.restore();
+  }
+
   // ---------------------------------------------------------------- son et mots
 
   async toggleSound() {
@@ -866,12 +979,13 @@ class Cymora {
     b.textContent = t(this.audio.enabled ? 'sound' : 'soundOff');
   }
 
-  showCard(title, text) {
+  showCard(title, text, hint = '', ms = 6000) {
     $('#card-title').textContent = title;
     $('#card-line').textContent = text;
+    $('#card-hint').textContent = hint;
     $('#card').classList.add('is-on');
     clearTimeout(this.cardTimer);
-    this.cardTimer = setTimeout(() => this.hideCard(), 6000);
+    this.cardTimer = setTimeout(() => this.hideCard(), ms);
   }
 
   hideCard() {

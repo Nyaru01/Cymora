@@ -100,8 +100,10 @@ in vec3 a_attr; // t, light, alpha
 uniform vec2 u_res;
 uniform float u_point;
 out vec3 v_attr;
+out vec2 v_pos;
 void main() {
   v_attr = a_attr;
+  v_pos = a_pos;
   vec2 clip = a_pos / u_res * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
   gl_PointSize = u_point * (1.0 + a_attr.y * 3.0);
@@ -122,26 +124,37 @@ vec3 palette(float t) {
 const FS_SEG = `#version 300 es
 precision mediump float;
 in vec3 v_attr;
+in vec2 v_pos;
 uniform float u_gain;
+uniform vec3 u_plate; // centre (px) et rayon de la plaque
 out vec4 o;
 ${PALETTE_GLSL}
 void main() {
   float light = v_attr.y;
-  vec3 base = palette(v_attr.x) * (0.55 + v_attr.x * 0.45);
-  vec3 lum = vec3(0.3, 0.92, 1.0) * light * 0.5; // lueur néon cyan des figures
-  o = vec4((base + lum) * v_attr.z * u_gain, v_attr.z);
+  // Cyan au cœur de la plaque, violet vers le bord : la lumière de l'emblème.
+  float r = length(v_pos - u_plate.xy) / u_plate.z;
+  float rim = smoothstep(0.42, 1.0, r);
+  float edge = 1.0 - smoothstep(1.02, 1.12, r); // hors de la plaque, la matière s'éteint
+  vec3 base = palette(v_attr.x) * (0.55 + v_attr.x * 0.45) * mix(vec3(1.0), vec3(1.15, 0.78, 1.2), rim);
+  vec3 lum = mix(vec3(0.3, 0.92, 1.0), vec3(0.66, 0.46, 1.0), rim) * light * 0.5;
+  o = vec4((base + lum) * v_attr.z * u_gain * edge, v_attr.z * edge);
 }`;
 
 const FS_GLOW = `#version 300 es
 precision mediump float;
 in vec3 v_attr;
+in vec2 v_pos;
+uniform vec3 u_plate;
 out vec4 o;
 void main() {
   vec2 d = gl_PointCoord * 2.0 - 1.0;
   float r = dot(d, d);
   if (r > 1.0 || v_attr.y < 0.04) discard;
   float a = exp(-r * 3.5) * v_attr.y * v_attr.z;
-  o = vec4(vec3(0.5, 0.55, 1.0) * a * 0.3, a * 0.4); // halo violet
+  float rr = length(v_pos - u_plate.xy) / u_plate.z;
+  float rim = smoothstep(0.42, 1.0, rr);
+  a *= 1.0 - smoothstep(1.02, 1.12, rr);
+  o = vec4(mix(vec3(0.35, 0.8, 1.0), vec3(0.6, 0.45, 1.0), rim) * a * 0.3, a * 0.4); // halo cyan puis violet
 }`;
 
 const FS_BLUR = `#version 300 es
@@ -317,11 +330,13 @@ function createGLRenderer(doc) {
         gl.useProgram(seg.p);
         gl.uniform2f(seg.u.u_res, W, H);
         gl.uniform1f(seg.u.u_point, 1);
+        gl.uniform3f(seg.u.u_plate, rect.x + rect.size / 2, rect.y + rect.size / 2, rect.size * 0.47);
         gl.uniform1f(seg.u.u_gain, 0.8);
         gl.drawArrays(gl.LINES, 0, count);
         gl.useProgram(glow.p);
         gl.uniform2f(glow.u.u_res, W, H);
         gl.uniform1f(glow.u.u_point, 2.2 * dpr);
+        gl.uniform3f(glow.u.u_plate, rect.x + rect.size / 2, rect.y + rect.size / 2, rect.size * 0.47);
         gl.drawArrays(gl.POINTS, 0, count);
         gl.disable(gl.SCISSOR_TEST);
       }

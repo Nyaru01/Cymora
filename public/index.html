@@ -17,18 +17,19 @@
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./src/styles.css">
 </head>
-<body data-state="threshold" data-tide="see">
+<body data-state="loading" data-tide="see">
   <main class="scene" id="scene">
     <canvas id="matter" class="scene__matter" tabindex="0" role="application" data-i18n-attr="aria-label:matter.label" aria-describedby="whisper"></canvas>
     <canvas id="ink" class="scene__ink" aria-hidden="true"></canvas>
     <p class="whisper" id="whisper" aria-live="polite"></p>
-    <div class="card" id="card" aria-live="polite"><p class="card__title" id="card-title"></p><p class="card__line" id="card-line"></p></div>
+    <div class="card" id="card" aria-live="polite"><p class="card__title" id="card-title"></p><p class="card__line" id="card-line"></p><p class="card__hint" id="card-hint"></p></div>
     <div class="fatal" id="fatal" role="alert" hidden></div>
   </main>
 
   <aside class="side" id="side" data-i18n-attr="aria-label:bar.label">
     <p class="side__kicker" id="side-kicker"></p>
     <h2 class="side__title" id="side-title"></h2>
+    <p class="side__story" id="side-story"></p>
     <p class="side__line" id="side-line"></p>
     <div id="side-pearls"></div>
     <p class="side__score" id="side-score"></p>
@@ -48,6 +49,22 @@
     </div>
   </header>
 
+  <section class="splash" id="splash" aria-labelledby="splash-title">
+    <img class="splash__logo" src="./icons/cymora-hero.jpg" alt="" width="880" height="880">
+    <p class="splash__title" id="splash-title" data-i18n="load.title">Cymora s’éveille…</p>
+    <div class="splash__bar" role="progressbar" aria-labelledby="splash-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="splash-bar"><span class="splash__fill" id="splash-fill"></span></div>
+    <div class="prologue" id="prologue" hidden>
+      <p data-i18n="prologue.1"></p>
+      <p data-i18n="prologue.2"></p>
+      <p data-i18n="prologue.3"></p>
+    </div>
+    <p class="splash__phones"><svg class="phones" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="3" y="13.5" width="4.5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="16.5" y="13.5" width="4.5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span><strong data-i18n="load.headphones">Avec un casque, c’est mieux.</strong> <span data-i18n="load.headphonesLine"></span></span></p>
+    <div class="splash__actions">
+      <button type="button" class="enter" id="splash-enter" hidden data-i18n="load.enter">Entrer</button>
+      <button type="button" class="link link--quiet" id="splash-skip" hidden data-i18n="load.skip">Passer</button>
+    </div>
+  </section>
+
   <section class="threshold" id="threshold" aria-labelledby="title">
     <h1 class="threshold__title" id="title"><img class="threshold__logo" src="./icons/cymora-hero.jpg" alt="Cymora" width="880" height="880"></h1>
     <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
@@ -59,6 +76,7 @@
       <button type="button" class="link" id="go-daily"><span data-i18n="daily">La résonance du jour</span> <span class="link__badge" id="daily-badge"></span></button>
       <button type="button" class="link" id="go-free" data-i18n="free">Improviser</button>
     </div>
+    <p class="threshold__phones"><svg class="phones" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="3" y="13.5" width="4.5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="16.5" y="13.5" width="4.5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="load.headphones">Avec un casque, c’est mieux.</span></p>
     <p class="threshold__how" data-i18n="how"></p>
     <p class="threshold__note" data-i18n="note"></p>
   </section>

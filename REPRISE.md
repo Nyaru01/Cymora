@@ -1,7 +1,7 @@
 # Reprendre Cymora — note de passation
 
 > À lire en premier par toute personne (ou tout agent) qui reprend le projet sur une autre machine.
-> État au 25 novembre 2026 : **version 1.13.0**, en ligne et identique à la branche GitHub `Resonance`.
+> État au 25 novembre 2026 : **version 1.19.0**, en ligne et identique à la branche GitHub `Resonance`.
 
 ## En deux mots
 
@@ -67,13 +67,16 @@ railway up --ci --service resonance
 | `public/src/styles.css` | direction artistique, mise en page mobile et grand écran |
 | `public/sw.js` | hors ligne : un cache par version ; `/api/` et `/vid/` ne passent pas par le cache |
 | `public/img/` | découpes de la planche d'assets (fonds des chapitres, rosaces, fleur) ; la planche d'origine y reste mais n'est pas publiée |
-| `public/vid/Intro.mp4` | vidéo d'intro (10 s, portrait 720×1280, avec son) |
+| `public/vid/Intro.mp4` | vidéo d'intro mobile (10 s, portrait 720×1280, avec son) |
+| `public/vid/intro_pc.mp4` | vidéo d'intro PC (10 s, 1280×720, bandes noires intégrées : affichée agrandie ×1,28) |
 
 ## Réglages de jeu décidés avec le propriétaire
 
 - **Chapitres :** cinq (I Voir, II Suivre, III Se souvenir, IV Écouter, V Battre). Notes tenues dès le chapitre II (`tideHolds`), chapitre V en mesure (`pulseMotif`, `rhythmOf` mesuré contre `reachTimes`).
 - **Tutoriels guidés :** avant la première note tenue (une note seule à tenir) et avant le chapitre V (quatre notes, une par battement). Clés `cymora.seen.hold` / `cymora.seen.pulse`.
 - **Niveaux de perle :** unisson 85 %, résonance 95 %, parfait 97 % (`PERFECT`, exige toutes les tenues). **Herbier** : une rosace par chant accordé (`drawRosace`).
+- **Lancement :** si le navigateur refuse le son, écran « Toucher pour entrer » puis intro avec le son ; fondu enchaîné de 3 s vers le fredonnement de l'accueil.
+- **Pendant le tour :** pointillés du geste toujours visibles (demande du propriétaire, jeu relaxant) ; orbe lumineuse à la place du curseur sur PC.
 - **Remise à zéro générale :** changer `RESET_EPOCH` dans app.js efface la progression de chaque appareil une fois. Faite le 25/11/2026.
 
 - **Seuils :** 85 % pour avancer dans l'aventure (`PASS`), 90 % pour la résonance du jour et le chœur (`DAILY_PASS`), 95 % pour la « résonance » (`RESONANCE`). Entre 70 et 85 % (ou 90 % pour le jour), le verdict est « presque » : on rechante.

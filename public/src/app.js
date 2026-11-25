@@ -21,16 +21,19 @@ const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
 const HOLD_SEEN = 'cymora.seen.hold'; // la carte « notes tenues » n'apparaît qu'une fois
 const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
+const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.13.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.19.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
 const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
-const COUNT = 12000;
+// Grains de matière : plus nombreux sur grand écran (la plaque y est bien plus grande), ajustés ensuite à la fluidité.
+const COUNT = matchMedia('(min-width: 1000px) and (pointer: fine)').matches ? 18000 : 12000;
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 /** État d'une perle : pas encore, à l'unisson (85 %), en résonance (95 %), parfait (97 %, toutes les tenues). */
+const streakText = (n) => t(n > 1 ? 'streak' : 'streak.one', { n });
 const pearlState = (v) => (v >= G.PERFECT ? 'pearl.perfect' : v >= G.RESONANCE ? 'pearl.res' : v >= G.PASS ? 'pearl.close' : 'pearl.none');
 /** Lancé en local (ce PC ou le réseau de la maison) : l'atelier des prototypes y est visible, jamais en ligne. */
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|.+\.local)$/.test(location.hostname);
@@ -80,7 +83,9 @@ async function boot() {
   app.start();
   // Toutes les figures sont préparées pendant le chargement : plus aucun à-coup en jouant.
   await app.prepare((k) => splashProgress(0.2 + 0.8 * k));
+  intro.onFade = () => app.homeSound();
   await openThreshold();
+  app.homeSound();
   if ('serviceWorker' in navigator && location.protocol === 'https:') watchUpdates();
   // Demande au navigateur de ne pas effacer la progression quand l'appareil manque de place.
   navigator.storage?.persist?.().catch(() => {});
@@ -117,7 +122,7 @@ async function watchUpdates() {
 
 /** Vibration (téléphone) : de courtes impulsions, jamais insistantes. */
 /** Réglages du joueur, gardés sur l'appareil. */
-const settings = { sound: true, haptics: true, guide: false, calm: false };
+const settings = { sound: true, haptics: true, guide: false, calm: false, volume: 0.7 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS) ?? '{}')); } catch { /* réglages par défaut */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS, JSON.stringify(settings)); } catch { /* le temps de la séance */ } };
 
@@ -288,27 +293,44 @@ function startIntro() {
     introOver();
   };
   if (reducedMotion || !v) { v?.remove(); fallback(); return; }
+  // Écran en paysage (PC) : l'intro 16:9 plein écran ; en portrait (téléphone) : l'intro verticale.
+  const wide = matchMedia('(min-aspect-ratio: 4/3)').matches;
+  document.body.classList.toggle('intro-wide', wide);
+  v.src = wide ? v.dataset.wide : v.dataset.portrait;
   v.addEventListener('error', fallback, { once: true });
   v.addEventListener('playing', () => { if (document.body.classList.contains('no-intro')) return; document.body.classList.add('has-intro'); glowLoop(v); }, { once: true });
   v.addEventListener('ended', introOver, { once: true });
+  // Fin naturelle : le fondu commence 3 s avant la dernière image, pour que rien ne soit coupé.
+  v.addEventListener('timeupdate', () => { if (v.duration && v.duration - v.currentTime < 3) fadeOutVideo(v); });
   const sound = $('#splash-sound');
   sound.addEventListener('click', () => { v.muted = false; sound.hidden = true; v.play().catch(() => {}); });
-  $('#splash-skip').addEventListener('click', () => { v.pause(); introOver(); });
+  $('#splash-skip').addEventListener('click', () => { fadeOutVideo(v); introOver(); });
+  let waiting = false;
+  // Filet de sécurité si « ended » ne vient jamais : armé une fois la vidéo partie.
+  const arm = () => setTimeout(introOver, ((v.duration || 10) + 4) * 1000);
   v.muted = false;
-  v.play().catch(() => {
-    // Son refusé avant tout geste : on joue en muet et on propose le son.
-    v.muted = true;
-    v.play().then(() => { sound.hidden = false; }, fallback);
+  v.play().then(arm, () => {
+    // Son refusé avant tout geste : plutôt qu'une intro muette, on invite à toucher ; elle part alors avec le son.
+    waiting = true;
+    const gate = $('#splash-gate');
+    gate.hidden = false;
+    const enter = () => {
+      gate.hidden = true;
+      waiting = false;
+      if (intro.ended) return; // « Passer » touché : on ne relance pas l'intro derrière l'accueil
+      v.muted = false;
+      v.play().then(arm, () => { v.muted = true; v.play().then(() => { sound.hidden = false; arm(); }, fallback); });
+    };
+    $('#splash').addEventListener('click', enter, { once: true });
   });
-  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 4000);
-  setTimeout(introOver, 14000); // filet de sécurité si « ended » ne vient jamais
+  setTimeout(() => { if (!waiting && !document.body.classList.contains('has-intro')) fallback(); }, 4000);
 }
 /** Écran large : la vidéo (portrait) est prolongée sur les côtés par son propre reflet, flou. */
 function glowLoop(v) {
   const cv = $('#splash-glow');
   const g = cv.getContext('2d');
   const tick = () => {
-    if (document.body.dataset.state !== 'loading') return;
+    if (document.body.dataset.state !== 'loading' || getComputedStyle(cv).display === 'none') return;
     const W = innerWidth;
     const H = innerHeight;
     if (W > H * 0.8) {
@@ -318,8 +340,11 @@ function glowLoop(v) {
       // « cover » : on remplit tout l'écran avec le centre de la vidéo.
       const vw = v.videoWidth || 720;
       const vh = v.videoHeight || 1280;
-      const k = Math.max(w / vw, h / vh);
-      g.drawImage(v, (w - vw * k) / 2, (h - vh * k) / 2, vw * k, vh * k);
+      // Vidéo PC : on laisse de côté ses bandes noires (12 % en haut et en bas) pour le reflet.
+      const crop = document.body.classList.contains('intro-wide') ? 0.12 : 0;
+      const sh = vh * (1 - 2 * crop);
+      const k = Math.max(w / vw, h / sh);
+      g.drawImage(v, 0, vh * crop, vw, sh, (w - vw * k) / 2, (h - sh * k) / 2, vw * k, sh * k);
     }
     requestAnimationFrame(tick);
   };
@@ -332,8 +357,26 @@ async function openThreshold() {
   splash.classList.add('is-ready');
   if (!intro.ended) $('#splash-skip').hidden = false;
   await intro.finished;
-  $('#splash-video')?.pause();
+  const v = $('#splash-video');
+  if (v) { fadeOutVideo(v); if (v.muted) v.pause(); }
   document.body.dataset.state = 'threshold';
+}
+
+/** Le son de l'intro ne s'arrête pas net : il s'éteint en fondu (3 s), puis la vidéo se met en pause. */
+function fadeOutVideo(v, ms = 3000) {
+  if (v.dataset.fading) return;
+  v.dataset.fading = '1';
+  intro.onFade?.(); // fondu enchaîné : son fredonnement monte pendant que l'intro s'éteint
+  if (v.paused || v.muted) return; // muette : rien à éteindre, l'image continue jusqu'au bout
+  const from = v.volume;
+  const t0 = performance.now();
+  const step = () => {
+    const k = Math.min(1, (performance.now() - t0) / ms);
+    v.volume = from * 0.5 * (1 + Math.cos(Math.PI * k)); // courbe douce, sans à-coup au début ni à la fin
+    if (k < 1) requestAnimationFrame(step);
+    else v.pause();
+  };
+  requestAnimationFrame(step);
 }
 
 class Cymora {
@@ -346,7 +389,9 @@ class Cymora {
     this.ink = this.inkCv.getContext('2d');
     this.renderer = createRenderer({ prefer: 'webgl2' });
     this.objectView = createObjectView();
+    this.greet();
     this.audio = createAudio();
+    this.audio.setVolume(settings.volume);
     this.settings = { ...E.DEFAULTS, speed: reducedMotion ? 0.3 : 0.55, turbulence: 0.18, glow: 0.6 };
     this.world = E.createWorld(20261125);
     this.world.nodes = [];
@@ -386,6 +431,33 @@ class Cymora {
   }
 
   // ---------------------------------------------------------------- progression
+
+  /**
+   * Accueil : si le navigateur permet déjà le son (l'intro a joué avec le son, ou l'on a touché « Passer »),
+   * son fredonnement monte doucement au lieu de laisser un silence après l'intro.
+   */
+  async homeSound() {
+    if (!settings.sound || this.audio.enabled || this.homeSounding) return;
+    this.homeSounding = true;
+    if (await this.audio.enable()) {
+      this.audio.drone(true);
+      // Deux notes soufflées font le pont avec la fin de l'intro.
+      this.audio.note(G.degreeFreq(2), { voice: 'breath', velocity: 0.22, delay: 0.3 });
+      this.audio.note(G.degreeFreq(6), { voice: 'breath', velocity: 0.18, delay: 1.5 });
+    }
+    this.homeSounding = false;
+  }
+
+  /** Elle te salue : selon l'heure, et si tu reviens après quelques jours. La première fois, la phrase d'accueil. */
+  greet() {
+    let last = null;
+    try { last = localStorage.getItem(VISIT); localStorage.setItem(VISIT, String(Date.now())); } catch { /* sans mémoire */ }
+    const away = last ? (Date.now() - Number(last)) / 86400000 : 0;
+    const h = new Date().getHours();
+    const key = !last ? 'tagline' : away >= 2 ? 'greet.back' : h >= 5 && h < 12 ? 'greet.morning' : h >= 18 && h < 23 ? 'greet.evening' : h >= 23 || h < 5 ? 'greet.night' : 'tagline';
+    const line = document.querySelector('.threshold__line[data-i18n="tagline"]');
+    if (line) { line.dataset.i18n = key; line.textContent = t(key); }
+  }
 
   load() {
     // Remise à zéro générale (une seule fois par appareil) : les chants ont changé avec les notes tenues.
@@ -505,6 +577,15 @@ class Cymora {
     $('#menu-open').addEventListener('click', () => this.openMenu());
     $('#menu-home').addEventListener('click', async () => { await closeDialog(menu); this.goHome(); });
     $('#menu-journey').addEventListener('click', async () => { await closeDialog(menu); this.openMap(); });
+    $('#menu-herbier').addEventListener('click', async () => { await closeDialog(menu); this.openHerbier(); });
+    // Depuis l'accueil, on passe par les mêmes boutons que l'accueil (son, entrée en jeu) ; en jeu, on y va directement.
+    $('#menu-daily').addEventListener('click', async () => { await closeDialog(menu); if (document.body.dataset.state === 'play') this.startDaily(); else $('#go-daily').click(); });
+    $('#menu-free').addEventListener('click', async () => { await closeDialog(menu); if (document.body.dataset.state === 'play') this.startFree(); else $('#go-free').click(); });
+    $('#set-volume').addEventListener('input', (ev) => {
+      settings.volume = clamp(Number(ev.target.value) / 100, 0, 1);
+      this.audio.setVolume(settings.volume);
+      saveSettings();
+    });
     $('#set-sound').addEventListener('click', async () => {
       settings.sound = !settings.sound;
       saveSettings();
@@ -537,6 +618,8 @@ class Cymora {
 
   syncSettings() {
     for (const key of ['sound', 'haptics', 'guide', 'calm']) $(`#set-${key}`).setAttribute('aria-checked', String(settings[key]));
+    $('#set-volume').value = String(Math.round(settings.volume * 100));
+    $('#set-volume').disabled = !settings.sound;
     const hapticsOk = CAN_VIBRATE || IOS;
     $('#set-haptics').disabled = !hapticsOk;
     $('#set-haptics-line').textContent = t(!hapticsOk ? 'set.hapticsNone' : CAN_VIBRATE ? 'set.hapticsLine' : 'set.hapticsIos');
@@ -555,7 +638,7 @@ class Cymora {
     this.hideCard();
     clearTimeout(this.whisperTimer);
     $('#whisper').classList.remove('is-on');
-    if (this.audio.enabled) this.audio.drone(false);
+    // À l'accueil, elle continue de fredonner doucement (le bourdon reste).
     this.setTone('see');
     this.setRound(0);
     this.save();
@@ -598,7 +681,7 @@ class Cymora {
     const done = (this.progress.days[this.today] ?? 0) >= G.DAILY_PASS;
     const streak = G.liveStreak(this.progress, this.today);
     $('#map-herbier-state').textContent = t('herbier.count', { n: this.progress.best.flat().filter((v) => v >= G.PASS).length, of: G.TIDES.length * G.MOTIFS_PER_TIDE });
-    $('#map-daily-state').textContent = `${t(done ? 'map.dailyDone' : 'map.dailyTodo')}${streak ? ` · ${t('streak', { n: streak })}` : ''}`;
+    $('#map-daily-state').textContent = `${t(done ? 'map.dailyDone' : 'map.dailyTodo')}${streak ? ` · ${streakText(streak)}` : ''}`;
     openDialog($('#map'));
   }
 
@@ -670,7 +753,7 @@ class Cymora {
     const started = this.progress.tide > 0 || this.progress.index > 0;
     $('#begin-label').textContent = t(started ? 'resume' : 'begin');
     const streak = G.liveStreak(this.progress, this.today ?? G.localDate());
-    $('#daily-badge').textContent = streak ? t('streak', { n: streak }) : '';
+    $('#daily-badge').textContent = streak ? streakText(streak) : '';
     let label = '';
     if (this.mode === 'tide') label = t('where', { n: ROMAN[this.tideIdx], name: t(`tide.${G.TIDES[this.tideIdx].id}`) });
     else if (this.mode === 'daily') label = t('where.daily');
@@ -1105,7 +1188,7 @@ class Cymora {
     }
     if (next === 'dailyDone') {
       const streak = G.liveStreak(this.progress, this.today);
-      this.showCard(t('card.dailyDone'), `${t('card.dailyNext')}${streak ? ` ${t('streak', { n: streak })}.` : ''}`);
+      this.showCard(t('card.dailyDone'), `${t('card.dailyNext')}${streak ? ` ${streakText(streak)}.` : ''}`);
       if (this.chorus?.paths.length) setTimeout(() => this.whisper(this.joined ? this.chorusLine() : t('chorus.seen'), 5200), 6200);
       this.phase = 'idle';
       this.relabel();
@@ -1128,6 +1211,28 @@ class Cymora {
       this.beginTouch(w.x, w.y, ev.pointerId);
       try { cv.setPointerCapture(ev.pointerId); } catch { /* pointeur déjà perdu */ }
     });
+    // Elle te suit : hors du tracé, la matière frémit sous la souris ou le doigt, et sa figure suit la hauteur du geste.
+    addEventListener('pointermove', (ev) => {
+      if (this.touch || this.phase === 'turn' || this.phase === 'free' || !this.rectCss) return;
+      const now = performance.now();
+      if (now - (this.gazeAt ?? 0) < 60) return;
+      this.gazeAt = now;
+      const w = this.toWorld(ev);
+      const dx = w.x - 0.5;
+      const dy = w.y - 0.5;
+      const r = Math.hypot(dx, dy);
+      const k = r > 0.46 ? 0.46 / r : 1; // hors de la plaque, elle regarde vers toi depuis son bord
+      this.gaze = { x: 0.5 + dx * k, y: 0.5 + dy * k, at: this.clock };
+      if (!reducedMotion) this.E.addWake(this.world, this.gaze.x, this.gaze.y, 0, 0, r > 0.46 ? 0.008 : 0.016);
+    }, { passive: true });
+    // Curseur de la souris : une petite orbe lumineuse dessinée sur la plaque (le curseur système est caché).
+    cv.addEventListener('pointermove', (ev) => {
+      if (ev.pointerType !== 'mouse' || !this.rectCss) return;
+      const b = cv.getBoundingClientRect();
+      const r = this.rectCss;
+      this.hover = { x: (ev.clientX - b.left - r.x) / r.size, y: (ev.clientY - b.top - r.y) / r.size };
+    });
+    cv.addEventListener('pointerleave', () => { this.hover = null; });
     cv.addEventListener('pointermove', (ev) => {
       if (!this.touch || this.touch.id !== ev.pointerId) return;
       const events = ev.getCoalescedEvents?.() ?? [ev];
@@ -1272,12 +1377,23 @@ class Cymora {
     requestAnimationFrame((n) => this.frame(n));
   }
 
+  /**
+   * Fluidité : si l'image ralentit, on retire des grains ; si elle redevient fluide un bon moment,
+   * on les rend peu à peu (sans dépasser le nombre prévu pour l'écran). Les deux seuils sont écartés
+   * pour ne pas osciller.
+   */
   adapt() {
     if (document.hidden) return;
     this.slowFrames = this.frameMs > 12 ? this.slowFrames + 1 : 0;
-    if (this.slowFrames > 120 && this.world.p.n > 5000) {
-      this.E.resetParticles(this.world, Math.round(this.world.p.n * 0.75));
+    this.fastFrames = this.frameMs < 6.5 ? (this.fastFrames ?? 0) + 1 : 0;
+    const n = this.world.p.n;
+    if (this.slowFrames > 120 && n > 6000) {
+      this.E.resetParticles(this.world, Math.round(n * 0.8));
       this.slowFrames = 0;
+      this.fastFrames = 0;
+    } else if (this.fastFrames > 360 && n < COUNT && this.phase !== 'turn') {
+      this.E.resetParticles(this.world, Math.min(COUNT, Math.round(n * 1.2)));
+      this.fastFrames = 0;
     }
   }
 
@@ -1440,7 +1556,11 @@ class Cymora {
     const period = 9;
     const k = Math.floor(this.clock / period);
     const phase = (this.clock % period) / period;
-    return { freq: G.degreeFreq((k * 3) % G.DEGREES), energy: 0.26 * Math.sin(Math.PI * phase) };
+    const breath = 0.26 * Math.sin(Math.PI * phase);
+    // Si l'on bouge près d'elle, elle se tourne vers le geste : sa figure suit sa hauteur, un peu plus vive.
+    const g = this.gaze;
+    if (g && this.clock - g.at < 2.5) return { freq: G.yFreq(g.y), energy: Math.max(breath, 0.3) };
+    return { freq: G.degreeFreq((k * 3) % G.DEGREES), energy: breath };
   }
 
   pointAt(at) {
@@ -1524,10 +1644,10 @@ class Cymora {
     let x;
     let y;
     if (wide) {
-      const side = clamp(w * 0.24, 290, 380);
-      size = Math.min(h * 0.88, w - side - 120);
+      const side = clamp(w * 0.24, 290, 520);
+      size = Math.min(h * 0.93, w - side - 100);
       x = side + 32 + (w - side - 32 - size) / 2;
-      y = (h - size) / 2 + 12;
+      y = (h - size) / 2 + 8;
       document.body.style.setProperty('--side-w', `${side}px`);
     } else {
       size = Math.min(w * (w < 640 ? 0.96 : 0.9), h * (h < 520 ? 0.86 : 0.8));
@@ -1556,6 +1676,9 @@ class Cymora {
     const listening = (this.mode === 'tide' || this.mode === 'daily' || this.mode === 'trial') && (this.phase === 'call' || (this.phase === 'turn' && this.touchedAt == null))
       && (this.helping ? 'always' : this.guide) !== 'none';
     if (listening !== this.listening) { this.listening = listening; $('#scene').classList.toggle('is-listening', listening); }
+    // Pendant qu'on trace, la matière se fait plus douce : les pointillés et le geste restent lisibles.
+    const tracing = this.phase === 'turn' && this.touchedAt != null && this.mode !== 'free';
+    if (tracing !== this.tracing) { this.tracing = tracing; $('#scene').classList.toggle('is-tracing', tracing); }
     const { ctx, cv } = this;
     if (this.renderer.lost && this.renderer.kind !== '2d') {
       this.renderer = createRenderer({ prefer: '2d' });
@@ -1677,6 +1800,35 @@ class Cymora {
       const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.2);
       ring(X(n), Y(n), (20 + breath * 4) * d, inks.guide, alpha * (0.75 + 0.25 * breath), upto, 2.2);
     };
+    /**
+     * Pointillés du geste à faire : des points réguliers le long du chant, qui coulent lentement
+     * dans le sens du tracé et respirent ; derrière le doigt, ils s'effacent.
+     */
+    const flow = (pts, alpha) => {
+      if (pts.length < 2 || alpha <= 0.01) return;
+      const L = [0];
+      for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot((pts[i].x - pts[i - 1].x) * size, (pts[i].y - pts[i - 1].y) * size));
+      const total = L.at(-1);
+      const gap = 12 * d;
+      const head = this.touch ? this.touch.path.at(-1).x : -1;
+      g.save();
+      g.fillStyle = inks.guide;
+      g.shadowColor = inks.guide;
+      g.shadowBlur = 6 * d;
+      let j = 1;
+      for (let s = (this.clock * 14 * d) % gap; s < total; s += gap) {
+        while (j < L.length - 1 && L[j] < s) j++;
+        const u = (s - L[j - 1]) / (L[j] - L[j - 1] || 1);
+        const x = pts[j - 1].x + (pts[j].x - pts[j - 1].x) * u;
+        const y = pts[j - 1].y + (pts[j].y - pts[j - 1].y) * u;
+        const wave = 0.7 + 0.3 * Math.sin(this.clock * 1.6 - s / (30 * d));
+        g.globalAlpha = alpha * (x < head - 0.01 ? 0.2 : wave);
+        g.beginPath();
+        g.arc(ox + x * size, oy + y * size, 1.7 * d, 0, TAU);
+        g.fill();
+      }
+      g.restore();
+    };
     const bead = (p, color, r, alpha) => {
       g.save();
       g.globalAlpha = alpha;
@@ -1712,6 +1864,8 @@ class Cymora {
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha);
         const dots = guide === 'glimpse' ? 0.22 : alpha;
+        // Jeu relaxant : les pointillés du geste restent visibles pendant tout le tour, quel que soit le chapitre.
+        flow(points, 0.75);
         // La prochaine note tenue à atteindre brille davantage et s'entoure d'un second anneau qui appelle.
         const nextHold = notes.findIndex((n, i) => n.hold && i >= (this.tune && this.touch ? this.tune.next : 0) && !this.heldNotes?.has(i));
         notes.forEach((n, i) => {
@@ -1796,7 +1950,36 @@ class Cymora {
         ring(X(head), Y(head), (26 + 22 * u) * d, inks.guide, 0.9 * (1 - u), 1, 2.2 * (1 - u) + 0.4);
       }
     }
-    else if (this.fading) {
+    else if (this.hover && document.body.dataset.state === 'play') {
+      // Orbe-curseur : un halo doux, un anneau fin et un cœur blanc, à la couleur du chapitre.
+      const hx = X(this.hover);
+      const hy = Y(this.hover);
+      const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.2);
+      const halo = g.createRadialGradient(hx, hy, 0, hx, hy, 34 * d);
+      halo.addColorStop(0, inks.stroke);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      g.save();
+      g.globalAlpha = 0.28;
+      g.fillStyle = halo;
+      g.beginPath();
+      g.arc(hx, hy, 34 * d, 0, TAU);
+      g.fill();
+      g.globalAlpha = 0.8;
+      g.strokeStyle = inks.stroke;
+      g.shadowColor = inks.stroke;
+      g.shadowBlur = 10 * d;
+      g.lineWidth = 1.6 * d;
+      g.beginPath();
+      g.arc(hx, hy, (14 + breath * 2.5) * d, 0, TAU);
+      g.stroke();
+      g.globalAlpha = 0.95;
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(hx, hy, 3.6 * d, 0, TAU);
+      g.fill();
+      g.restore();
+    }
+    if (!this.touch && this.fading) {
       const age = this.clock - this.fading.at;
       const life = this.phase === 'echo' ? 3.6 : 2.2;
       if (age > life) this.fading = null;
@@ -1901,34 +2084,79 @@ class Cymora {
   drawMotes(g, d, inks) {
     const W = this.inkCv.width;
     const H = this.inkCv.height;
-    if (!this.motes) {
+    // Plancton : plus nombreux sur un grand écran, pour que les côtés vivent aussi.
+    const want = Math.round(clamp((innerWidth * innerHeight) / 6500, 110, 300));
+    if (!this.motes || this.motes.length !== want) {
       const r = G.rng(11);
-      this.motes = Array.from({ length: 110 }, () => ({ x: r(), y: r(), z: 0.25 + r() * 0.75, ph: r() * TAU, c: r() < 0.35 }));
+      this.motes = Array.from({ length: want }, () => ({ x: r(), y: r(), z: 0.15 + r() * 0.85, ph: r() * TAU, c: r(), f: r() < 0.06 }));
     }
     const e = clamp(this.energy, 0, 1);
     const still = reducedMotion ? 0 : 1;
+    const t = this.clock * still;
     const cx = this.rect.x + this.rect.size / 2;
     const cy = this.rect.y + this.rect.size / 2;
+    // Onde de résonance en cours : le plancton s'illumine avec la plaque.
+    const wave = (this.pulses ?? []).reduce((a, p) => Math.max(a, p.k * clamp(1 - (this.clock - p.at) / PULSE, 0, 1)), 0);
+    // Le doigt ou la souris écarte doucement les grains proches.
+    const pointer = this.touch ? this.touch.path.at(-1) : this.hover;
+    const px = pointer ? this.rect.x + pointer.x * this.rect.size : -1e9;
+    const py = pointer ? this.rect.y + pointer.y * this.rect.size : -1e9;
+    const calm = settings.calm ? 0.6 : 1;
     g.save();
+    g.globalCompositeOperation = 'lighter';
     for (const m of this.motes) {
-      const t = this.clock * still;
-      let x = ((m.x + Math.sin(t * 0.07 * m.z + m.ph) * 0.02) % 1) * W;
-      let y = (((m.y - t * 0.006 * m.z) % 1 + 1) % 1) * H;
-      // La plaque attire doucement les grains proches quand elle chante.
+      // Dérive lente et tourbillonnante, plus rapide pour les grains proches (parallaxe).
+      let x = (((m.x + Math.sin(t * 0.05 * m.z + m.ph) * 0.03 + Math.sin(t * 0.013 + m.y * 6) * 0.01) % 1) + 1) % 1 * W;
+      let y = (((m.y - t * 0.007 * m.z + Math.cos(t * 0.04 * m.z + m.ph * 2) * 0.008) % 1) + 1) % 1 * H;
       const dx = cx - x;
       const dy = cy - y;
       const dist = Math.hypot(dx, dy) || 1;
       const pull = e * 0.05 * m.z * Math.min(1, (this.rect.size * 0.9) / dist);
       x += dx * pull;
       y += dy * pull;
+      const qx = x - px;
+      const qy = y - py;
+      const near = Math.hypot(qx, qy);
+      const reach = 90 * d;
+      if (near < reach) { const push = (1 - near / reach) * 26 * d * m.z; x += (qx / (near || 1)) * push; y += (qy / (near || 1)) * push; }
       const twinkle = 0.55 + 0.45 * Math.sin(t * (0.8 + m.z * 1.6) + m.ph * 3);
-      g.globalAlpha = (0.1 + 0.34 * m.z) * twinkle * (0.75 + e * 0.6) * (settings.calm ? 0.6 : 1);
-      g.fillStyle = m.c ? inks.stroke : inks.guide;
+      // Lucioles : de rares grains s'allument un instant.
+      const flash = m.f ? Math.max(0, Math.sin(t * 0.6 + m.ph * 7)) ** 12 : 0;
+      const a = ((0.08 + 0.34 * m.z) * twinkle * (0.75 + e * 0.6 + wave * 0.9) + flash * 0.8) * calm;
+      const color = m.c < 0.45 ? inks.guide : m.c < 0.8 ? inks.stroke : '#ffffff';
+      const rad = (0.5 + m.z * 1.5) * d;
+      // Les grains proches portent un halo flou (bokeh).
+      if (m.z > 0.7 || flash > 0.05) {
+        g.globalAlpha = a * 0.22;
+        g.drawImage(this.moteSprite(color), x - rad * 6, y - rad * 6, rad * 12, rad * 12);
+      }
+      g.globalAlpha = Math.min(1, a);
+      g.fillStyle = color;
       g.beginPath();
-      g.arc(x, y, (0.6 + m.z * 1.4) * d, 0, TAU);
+      g.arc(x, y, rad, 0, TAU);
       g.fill();
     }
     g.restore();
+  }
+
+  /** Halo flou d'un grain, préparé une fois par couleur. */
+  moteSprite(color) {
+    this.sprites ??= new Map();
+    let s = this.sprites.get(color);
+    if (!s) {
+      s = document.createElement('canvas');
+      s.width = s.height = 64;
+      const sg = s.getContext('2d');
+      const grad = sg.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, color);
+      grad.addColorStop(0.35, color);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      sg.globalAlpha = 0.9;
+      sg.fillStyle = grad;
+      sg.fillRect(0, 0, 64, 64);
+      this.sprites.set(color, s);
+    }
+    return s;
   }
 
   /** Le bord de la plaque : un halo diffus, plus vif quand la matière vibre ; et les ondes de résonance. */

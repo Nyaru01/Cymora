@@ -2,6 +2,8 @@
 
 **La matière chante. Réponds-lui.** · *The matter sings. Answer it.*
 
+> **Vous reprenez le projet ?** Lisez d’abord [REPRISE.md](REPRISE.md) (passation, règles, état et points ouverts).
+
 Cymora est un jeu musical apaisé, installable comme une app (PWA) sur téléphone, tablette et ordinateur. Une matière lumineuse chante un court motif ; on lui répond en le retraçant du doigt : plus haut, plus aigu. Quand le geste épouse le chant, la matière entre en résonance et se cristallise en une figure de plaque vibrante : rosaces, pétales, anneaux.
 
 Cette branche (`Resonance`) fait de l'œuvre III de l'exposition QUATRE, *Résonance*, une application à part entière : Cymora. L'exposition complète reste sur `main`. Adresse : https://cymora.up.railway.app

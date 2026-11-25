@@ -112,6 +112,14 @@
       <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
     </form>
   </dialog>
+  <dialog class="map herbier" id="herbier" aria-labelledby="herbier-title">
+    <form method="dialog">
+      <h2 id="herbier-title" data-i18n="herbier.title">Herbier</h2>
+      <p class="map__lede" data-i18n="herbier.lede"></p>
+      <div id="herbier-grid"></div>
+      <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
+    </form>
+  </dialog>
   <dialog class="map" id="map" aria-labelledby="map-title">
     <form method="dialog">
       <div class="map__banner" aria-hidden="true"></div>
@@ -121,6 +129,7 @@
       <ol class="tides" id="tides"></ol>
       <div class="map__more">
         <button type="button" class="map__mode" id="map-daily"><span class="map__name" data-i18n="daily"></span><span class="map__state" id="map-daily-state"></span></button>
+        <button type="button" class="map__mode map__mode--wide" id="map-herbier"><span class="map__name" data-i18n="herbier.title"></span><span class="map__state" id="map-herbier-state"></span></button>
         <button type="button" class="map__mode" id="map-free"><span class="map__name" data-i18n="free"></span><span class="map__state" data-i18n="card.freeLine"></span></button>
         <button type="button" class="map__mode" id="map-trial"><span class="map__name" data-i18n="card.hold"></span><span class="map__state" data-i18n="map.trialLine"></span></button>
         <button type="button" class="map__mode" id="map-pulse"><span class="map__name" data-i18n="card.pulse"></span><span class="map__state" data-i18n="map.trialLine"></span></button>

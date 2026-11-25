@@ -61,6 +61,20 @@ test('tutoriel : une seule note tenue, à la hauteur de la première tenue du ch
   assert.equal(lesson.notes[0].deg, m.notes.find((n) => n.hold).deg);
 });
 
+test('chapitre V « Battre » : chants en mesure, sans note tenue ; tutoriel de quatre battements', () => {
+  const k = G.TIDES.findIndex((t) => t.pulse);
+  assert.equal(k, 4);
+  for (let i = 0; i < G.MOTIFS_PER_TIDE; i++) {
+    const m = G.tideMotif(k, i);
+    assert.ok(m.pulse);
+    assert.ok(!m.notes.some((n) => n.hold));
+  }
+  const lesson = G.pulseLesson();
+  assert.equal(lesson.notes.length, 4);
+  assert.equal(G.rhythmOf(lesson.notes, lesson.notes.map((n) => 3 + n.at)).score, 1);
+  assert.ok(G.PERFECT > G.RESONANCE && G.PERFECT < 1);
+});
+
 test('verdictOf suit les seuils', () => {
   assert.equal(G.verdictOf(0.96), 'resonance');
   assert.equal(G.verdictOf(0.86), 'close');

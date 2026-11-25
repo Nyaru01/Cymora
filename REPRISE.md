@@ -1,7 +1,7 @@
 # Reprendre Cymora — note de passation
 
 > À lire en premier par toute personne (ou tout agent) qui reprend le projet sur une autre machine.
-> État au 25 novembre 2026 : **version 1.8.1**, en ligne et identique à la branche GitHub `Resonance`.
+> État au 25 novembre 2026 : **version 1.13.0**, en ligne et identique à la branche GitHub `Resonance`.
 
 ## En deux mots
 
@@ -71,6 +71,11 @@ railway up --ci --service resonance
 
 ## Réglages de jeu décidés avec le propriétaire
 
+- **Chapitres :** cinq (I Voir, II Suivre, III Se souvenir, IV Écouter, V Battre). Notes tenues dès le chapitre II (`tideHolds`), chapitre V en mesure (`pulseMotif`, `rhythmOf` mesuré contre `reachTimes`).
+- **Tutoriels guidés :** avant la première note tenue (une note seule à tenir) et avant le chapitre V (quatre notes, une par battement). Clés `cymora.seen.hold` / `cymora.seen.pulse`.
+- **Niveaux de perle :** unisson 85 %, résonance 95 %, parfait 97 % (`PERFECT`, exige toutes les tenues). **Herbier** : une rosace par chant accordé (`drawRosace`).
+- **Remise à zéro générale :** changer `RESET_EPOCH` dans app.js efface la progression de chaque appareil une fois. Faite le 25/11/2026.
+
 - **Seuils :** 85 % pour avancer dans l'aventure (`PASS`), 90 % pour la résonance du jour et le chœur (`DAILY_PASS`), 95 % pour la « résonance » (`RESONANCE`). Entre 70 et 85 % (ou 90 % pour le jour), le verdict est « presque » : on rechante.
 - **Tracé de Cymora par chapitre :** I toujours visible ; II visible pendant le chant ; III visible pendant le chant, il s'efface quand on répond ; IV un souffle de tracé pendant le chant. Le réglage « Garder le chant visible » le laisse affiché partout.
 - **Lancement :** la vidéo d'intro, puis l'accueil (« Commencer » ou « Continuer »). Il n'y a plus de prologue.
@@ -83,7 +88,7 @@ railway up --ci --service resonance
 ## Ce qui reste ouvert
 
 - **Vibrations :** résolu (Android). Le réglage système coupait tout ; en jeu, les impulsions de moins de 50 ms ne se sentaient pas : elles font maintenant 50 ms au moins.
-- **Phase 0 (prototypes de gestes) :** l'« Atelier · Tenir » (carte, bouton en pointillés) teste les notes tenues (`holdMotif` et `HOLD` dans game.js, `stepHold` et `followTune` dans app.js). Il ne touche pas à la progression. Plan : essayer tenir, glisser, rythme, silence, puis garder 2 ou 3 gestes pour de vrais chapitres.
+- **Atelier (prototypes) :** « Tenir » et « Pulsation », visibles **uniquement en local** (constante `LOCAL` dans app.js). Ne jamais les exposer en ligne.
 - `public/vid/gemini_generated_video_eb89f13f.mp4` : une autre vidéo, non utilisée, non commitée et exclue du déploiement.
 
 ## Idées essayées puis abandonnées (ne pas reproposer telles quelles)

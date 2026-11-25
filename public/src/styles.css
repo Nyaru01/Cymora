@@ -23,6 +23,7 @@
 }
 body[data-tide="follow"] { --bg-1: #06283a; --accent: #4ff0d0; --accent-2: #5ea8ff; --line: rgba(120, 255, 230, 0.15); --matter: hue-rotate(-18deg); }
 body[data-tide="remember"] { --bg-1: #191343; --accent: #b9a2ff; --accent-2: #5ee0ff; --line: rgba(190, 170, 255, 0.16); --matter: hue-rotate(22deg) saturate(0.9); }
+body[data-tide="pulse"] { --bg-1: #2a1230; --accent: #ffc48f; --accent-2: #ff8fcf; --line: rgba(255, 200, 150, 0.16); --matter: hue-rotate(-70deg) saturate(1.1); }
 body[data-tide="listen"] { --bg-1: #0c1331; --accent: #cfdcff; --accent-2: #8e86ff; --line: rgba(205, 220, 255, 0.15); --matter: saturate(0.45) brightness(1.12); }
 body[data-tide="daily"] { --bg-1: #22103f; --accent: #e7adff; --accent-2: #6fd8ff; --line: rgba(230, 175, 255, 0.16); --matter: hue-rotate(38deg); }
 body[data-tide="free"] { --bg-1: #08173c; --accent: #73e4ff; --accent-2: #b08cff; --matter: none; }
@@ -74,6 +75,7 @@ body[data-state="play"][data-tide="see"] .backdrop--see,
 body[data-state="play"][data-tide="follow"] .backdrop--follow,
 body[data-state="play"][data-tide="remember"] .backdrop--remember,
 body[data-state="play"][data-tide="listen"] .backdrop--listen,
+body[data-state="play"][data-tide="pulse"] .backdrop--daily,
 body[data-state="play"][data-tide="daily"] .backdrop--daily,
 body[data-state="play"][data-tide="free"] .backdrop--free { opacity: 0.32; transform: scale(1); }
 body.is-calm .backdrop__img { filter: blur(5px) saturate(0.8); }
@@ -189,6 +191,7 @@ body[data-state="loading"] .bar__where { opacity: 0; visibility: hidden; }
 .pearl { width: 8px; height: 8px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); transition: background 1.2s, box-shadow 1.2s; }
 .pearl.is-close { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 .pearl.is-res { background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 18px var(--accent-2); border-color: var(--accent); }
+.pearl.is-perfect { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 .lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--glass); backdrop-filter: blur(12px); }
 .lang-switch button { min-width: 44px; min-height: 42px; border: 0; background: transparent; color: var(--faint); font: 600 11px/1 var(--mono); letter-spacing: 0.1em; cursor: pointer; }
@@ -463,6 +466,7 @@ body.no-intro .splash__video, body.no-intro .splash__glow, body.no-intro .splash
 .tide__art--see { background-image: url("../img/rosace-1.jpg"); }
 .tide__art--follow { background-image: url("../img/rosace-2.jpg"); }
 .tide__art--remember { background-image: url("../img/rosace-3.jpg"); }
+.tide__art--pulse { background-image: url("../img/rosace-3.jpg"); filter: hue-rotate(-90deg) saturate(1.2); }
 .tide__art--listen { background-image: url("../img/fleur.jpg"); background-size: 290%; }
 .map h2 { margin: 0 0 6px; font: italic 400 32px/1.1 var(--serif); color: var(--accent); }
 .map__lede { margin: 0 0 18px; color: var(--dim); font-size: 14px; }
@@ -499,6 +503,15 @@ button.pearl:hover, button.pearl:focus-visible { transform: scale(1.5); outline:
 .map__mode:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 /* L'atelier (prototype) occupe toute la largeur, en pointillés : c'est un essai, pas un mode du jeu. */
 #map-trial, #map-pulse { border-style: dashed; }
+.map__mode--wide { grid-column: 1 / -1; }
+/* Herbier : une rangée par chapitre, cinq rosaces. */
+.herbier__row { margin: 0 0 12px; }
+.herbier__name { margin: 0 0 6px; font: italic 15px/1.2 var(--serif); color: var(--soft); }
+.herbier__grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.rosace { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: rgba(255, 255, 255, 0.025); overflow: hidden; }
+button.rosace { cursor: pointer; transition: transform 0.3s, border-color 0.3s; }
+button.rosace:hover, button.rosace:focus-visible { transform: scale(1.06); border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
+.rosace canvas { display: block; width: 100%; height: 100%; }
 .map__name { font: italic 18px/1.2 var(--serif); }
 .map__state { font-size: 12.5px; color: var(--dim); }
 .map__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-bottom: 14px; }

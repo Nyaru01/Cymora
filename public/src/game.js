@@ -12,12 +12,13 @@ const MARGIN = 0.1; // la gamme occupe le champ sans toucher les bords
 export const PASS = 0.85; // aventure : « à l'unisson », on passe au chant suivant (85 % au moins)
 export const DAILY_PASS = 0.9; // résonance du jour : plus exigeante, c'est elle qui fait entrer dans le chœur
 export const RESONANCE = 0.95; // « en résonance » : la matière se cristallise
+export const PERFECT = 0.97; // « parfait » : la troisième perle, qui demande aussi toutes les tenues
 export const NEAR = 0.7; // « presque » : encourageant, mais on rechante
 export const MOTIFS_PER_TIDE = 5;
 
 /**
- * Les quatre marées : on apprend d'abord à voir le chant, puis à le suivre,
- * à s'en souvenir, enfin à le deviner d'un souffle de lumière.
+ * Les cinq chapitres : on apprend d'abord à voir le chant, puis à le suivre,
+ * à s'en souvenir, à le deviner d'un souffle de lumière, enfin à le battre en mesure (pulse).
  * guide : 'always' (tracé visible pendant la réponse), 'call' (visible pendant le chant, s'efface
  * quand on répond), 'glimpse' (à peine esquissé pendant le chant), 'none' (le son et la forme seuls).
  */
@@ -26,6 +27,7 @@ export const TIDES = Object.freeze([
   { id: 'follow', notes: [3, 4], guide: 'call', span: 4 },
   { id: 'remember', notes: [4, 5], guide: 'call', span: 4 },
   { id: 'listen', notes: [3, 5], guide: 'glimpse', span: 5 },
+  { id: 'pulse', notes: [4, 6], guide: 'always', span: 4, pulse: true },
 ]);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -113,6 +115,7 @@ export function tideMotif(tide, index) {
   const t = TIDES[clamp(tide, 0, TIDES.length - 1)];
   const [a, b] = t.notes;
   const count = a + Math.round(((b - a) * clamp(index, 0, MOTIFS_PER_TIDE - 1)) / (MOTIFS_PER_TIDE - 1));
+  if (t.pulse) return pulseMotif(index, `tide:${t.id}`); // chapitre V : chaque note sur un battement
   return withHolds(motif(hash(`tide:${t.id}:${index}`), count, t.span), tideHolds(tide, index));
 }
 
@@ -137,7 +140,7 @@ export function holdLesson(m) {
 
 /** Nombre de notes tenues dans un chant de l'aventure : aucune au chapitre I, puis de plus en plus tôt. */
 export function tideHolds(tide, index) {
-  if (tide <= 0) return 0;
+  if (tide <= 0 || TIDES[tide]?.pulse) return 0;
   if (tide === 1) return index >= 2 ? 1 : 0;
   if (tide === 2) return index >= 1 ? 1 : 0;
   return index >= 3 ? 2 : 1;
@@ -168,9 +171,9 @@ export const BEAT = 0.62;
  * Un chant de l'atelier « Pulsation » : chaque note tombe sur un temps régulier ;
  * dès le deuxième chant, certaines durent deux temps.
  */
-export function pulseMotif(index) {
+export function pulseMotif(index, key = 'pulse') {
   const i = Math.max(0, Math.floor(index));
-  const m = motif(hash(`pulse:${i}`), 4 + Math.min(2, i), 4);
+  const m = motif(hash(`${key}:${i}`), 4 + Math.min(2, i), 4);
   const r = rng(m.seed ^ 0xbea7);
   let at = 0;
   const notes = m.notes.map((n, j) => {
@@ -179,7 +182,13 @@ export function pulseMotif(index) {
     at += beats * BEAT;
     return out;
   });
-  return { seed: m.seed, notes, duration: round(at - 0.08, 3) };
+  return { seed: m.seed, notes, duration: round(at - 0.08, 3), pulse: true };
+}
+
+/** Tutoriel de la pulsation : quatre notes qui montent puis redescendent, une par battement. */
+export function pulseLesson() {
+  const notes = [3, 5, 7, 5].map((deg, j) => ({ deg, at: round(j * BEAT, 3), dur: round(BEAT - 0.08, 3), beats: 1 }));
+  return { seed: 0, notes, duration: round(4 * BEAT - 0.08, 3), pulse: true };
 }
 
 /**
@@ -187,9 +196,10 @@ export function pulseMotif(index) {
  * @param {{at:number}[]} notes notes du chant
  * @param {number[]} times instants où le doigt a atteint chaque note (dans l'ordre)
  * @param {number} tempo facteur de lenteur du chant (1 = normal)
+ * @param {number[]} [ref] instants de référence (par défaut le début des notes ; voir reachTimes)
  * @returns {{score:number, drift:number}} score 0..1 ; drift < 0 : pressé, > 0 : lent
  */
-export function rhythmOf(notes, times, tempo = 1) {
+export function rhythmOf(notes, times, tempo = 1, ref = notes.map((n) => n.at)) {
   const n = notes.length - 1;
   if (n < 1) return { score: 1, drift: 0 };
   let err = 0;
@@ -197,14 +207,27 @@ export function rhythmOf(notes, times, tempo = 1) {
   let counted = 0;
   for (let j = 1; j <= n; j++) {
     if (times[j] == null || times[j - 1] == null) { err += 1; continue; }
-    const want = (notes[j].at - notes[j - 1].at) * tempo;
+    const want = (ref[j] - ref[j - 1]) * tempo;
     const ratio = (times[j] - times[j - 1]) / want;
-    // ±20 % de marge : le doigt « atteint » une note pendant son glissando, plus ou moins tôt selon le saut.
-    err += Math.min(1, Math.max(0, Math.abs(ratio - 1) - 0.2));
+    // ±10 % de marge : la main n'est pas un métronome.
+    err += Math.min(1, Math.max(0, Math.abs(ratio - 1) - 0.1));
     drift += ratio - 1;
     counted++;
   }
   return { score: round(clamp(1 - (err / n) * 2.5, 0, 1), 3), drift: round(counted ? drift / counted : 0, 3) };
+}
+
+/**
+ * Instants où le chant lui-même « atteint » chaque note (à 0,35 degré près), en suivant sa courbe :
+ * c'est la référence juste pour le rythme, car on arrive sur une note pendant le glissando qui y mène.
+ */
+export function reachTimes(m, tolerance = 0.35) {
+  const out = [];
+  let k = 0;
+  for (let t = 0; t <= m.duration + 1e-9 && k < m.notes.length; t += 1 / 240) {
+    if (Math.abs(motifDegreeAt(m, t) - m.notes[k].deg) < tolerance) out[k++] = round(t, 4);
+  }
+  return out;
 }
 
 /** Verdict d'un score, selon le seuil pour avancer. */

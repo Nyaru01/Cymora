@@ -1,4 +1,4 @@
-// RÉSONANCE — le cœur du jeu. Auteur : CLAUDE.
+// CYMORA — le cœur du jeu. Auteur : CLAUDE.
 // La matière chante un motif ; on lui répond d'un geste. La hauteur du geste est une note
 // (en haut : aigu). On mesure l'accord entre les deux contours, sans juger le tempo :
 // une réponse lente ou rapide peut être juste. Tout est déterministe et sans dépendance.
@@ -228,6 +228,47 @@ export function attune(m, gesture) {
   const score = round(clamp(1 - distance / 1.5, 0, 1), 3);
   const verdict = score >= RESONANCE ? 'resonance' : score >= PASS ? 'close' : 'far';
   return { score, verdict, distance: round(distance, 3) };
+}
+
+// ------------------------------------------------------------------ chœur du jour
+
+export const CHORUS_POINTS = 48;
+
+/**
+ * Réduit un geste à ce qui se partage : 48 hauteurs prises à temps régulier et une durée.
+ * Ni position horizontale, ni horodatage, ni rien qui identifie l'appareil.
+ * @returns {{y:number[], dur:number} | null}
+ */
+export function chorusTrace(gesture, n = CHORUS_POINTS) {
+  const pts = (gesture ?? []).filter((p) => p && Number.isFinite(p.t) && Number.isFinite(p.y));
+  if (pts.length < 2) return null;
+  const t0 = pts[0].t;
+  const span = pts.at(-1).t - t0;
+  if (!(span > 0)) return null;
+  const y = [];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const t = t0 + (i / (n - 1)) * span;
+    while (j + 1 < pts.length && pts[j + 1].t < t) j++;
+    const a = pts[j];
+    const b = pts[Math.min(pts.length - 1, j + 1)];
+    const u = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0;
+    y.push(round(clamp(a.y + (b.y - a.y) * u, 0, 1), 3));
+  }
+  return { y, dur: round(Math.min(30, span), 3) };
+}
+
+/** Trace partagée → geste, pour la mesurer de nouveau (côté serveur) ou la dessiner. */
+export function chorusGesture(trace) {
+  const n = trace.y.length;
+  return trace.y.map((y, i) => ({ t: (i / (n - 1)) * trace.dur, y }));
+}
+
+/** Une trace reçue est-elle bien formée ? (Tout le reste est refusé.) */
+export function validTrace(trace, n = CHORUS_POINTS) {
+  return Boolean(trace) && Array.isArray(trace.y) && trace.y.length === n
+    && trace.y.every((v) => typeof v === 'number' && v >= 0 && v <= 1)
+    && typeof trace.dur === 'number' && trace.dur >= 0.25 && trace.dur <= 30;
 }
 
 // ------------------------------------------------------------------ progression

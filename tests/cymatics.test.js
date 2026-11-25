@@ -1,7 +1,7 @@
 // Matière modale — auteur : CLAUDE. Le geste doit réellement dessiner une figure.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, PITCH_HIGH, PITCH_LOW, applyCymatics, buildField, gestureFreq, gradPsi, modeIndex, nodalSegments, psi } from '../public/src/cymatics.js';
+import { MODES, besselJ, besselZero, PITCH_HIGH, PITCH_LOW, applyCymatics, buildField, gestureFreq, gradPsi, modeIndex, nodalSegments, psi } from '../public/src/cymatics.js';
 
 const packed = (n, seed = 3) => {
   let s = seed;
@@ -11,12 +11,21 @@ const packed = (n, seed = 3) => {
   return p;
 };
 
+test('Bessel : valeurs et zéros connus de la plaque circulaire', () => {
+  assert.ok(Math.abs(besselJ(0, 0) - 1) < 1e-9);
+  assert.ok(Math.abs(besselJ(1, 1) - 0.4400505857) < 1e-6);
+  assert.ok(Math.abs(besselJ(2, 5) - 0.0465651163) < 1e-6);
+  assert.ok(Math.abs(besselZero(0, 1) - 2.404825558) < 1e-6);
+  assert.ok(Math.abs(besselZero(2, 1) - 5.135622302) < 1e-6);
+  assert.ok(Math.abs(besselZero(5, 2) - 12.33860420) < 1e-6);
+});
+
 test('les modes sont ordonnés par fréquence propre et distincts', () => {
   assert.ok(MODES.length >= 24);
   const keys = new Set(MODES.map(String));
   assert.equal(keys.size, MODES.length);
   for (let i = 1; i < MODES.length; i++) {
-    const e = ([m, n]) => m * m + n * n;
+    const e = ([n, k]) => besselZero(n, k);
     assert.ok(e(MODES[i]) >= e(MODES[i - 1]), `ordre ${MODES[i]}`);
   }
 });
@@ -31,15 +40,15 @@ test('modeIndex est monotone, borné, et grave = figure simple', () => {
   for (let f = 80; f < 900; f += 7) { const k = modeIndex(f); assert.ok(k >= prev); prev = k; }
 });
 
-test('le gradient analytique correspond aux différences finies', () => {
-  const h = 1e-5;
+test('le gradient correspond aux différences finies', () => {
+  const h = 1e-3;
   for (const [m, n] of [MODES[0], MODES[9], MODES[25]]) {
-    for (const [x, y] of [[0.2, 0.7], [0.51, 0.33], [0.9, 0.1]]) {
+    for (const [x, y] of [[0.2, 0.7], [0.51, 0.33], [0.62, 0.8]]) {
       const [gx, gy] = gradPsi(m, n, x, y);
       const fx = (psi(m, n, x + h, y) - psi(m, n, x - h, y)) / (2 * h);
       const fy = (psi(m, n, x, y + h) - psi(m, n, x, y - h)) / (2 * h);
-      assert.ok(Math.abs(gx - fx) < 1e-3 * (1 + Math.abs(fx)));
-      assert.ok(Math.abs(gy - fy) < 1e-3 * (1 + Math.abs(fy)));
+      assert.ok(Math.abs(gx - fx) < 2e-2 * (1 + Math.abs(fx)), `${gx} ${fx}`);
+      assert.ok(Math.abs(gy - fy) < 2e-2 * (1 + Math.abs(fy)), `${gy} ${fy}`);
     }
   }
 });

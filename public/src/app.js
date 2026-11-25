@@ -1,4 +1,4 @@
-// RÉSONANCE — la scène. Auteur : CLAUDE.
+// CYMORA — la scène. Auteur : CLAUDE.
 // La matière chante un motif (sa figure de Chladni suit chaque note), puis c'est au visiteur
 // de le retracer : la hauteur du geste est la note. game.js mesure l'accord ; s'il est juste,
 // la matière se cristallise et la marée avance. En improvisation, on retrouve le dialogue libre
@@ -15,23 +15,29 @@ const i18n = createI18n(DICT);
 const t = i18n.t;
 
 const STEP = 1 / 60;
-const STORE = 'resonance.progress.v1';
-const FREE_STORE = 'resonance.free.v1';
+const STORE = 'cymora.progress.v1';
+const FREE_STORE = 'cymora.free.v1';
+const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
 const COUNT = 12000;
 const ROMAN = ['I', 'II', 'III', 'IV'];
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/** Lit une clé, ou son ancien nom d'avant Cymora. */
+const stored = (key) => localStorage.getItem(key) ?? localStorage.getItem(LEGACY[key]);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Couleurs de chaque moment : encre du guide, encre du geste. Le reste est en CSS. */
 const INKS = {
-  see: { guide: '#ffe2b8', stroke: '#ffd0c2' },
-  follow: { guide: '#fff1c8', stroke: '#b9fff0' },
-  remember: { guide: '#ffd9a6', stroke: '#d9ccff' },
-  listen: { guide: '#f4f2ff', stroke: '#e4ecff' },
-  daily: { guide: '#ffe7a8', stroke: '#fff4d6' },
-  free: { guide: '#ffd27a', stroke: '#bff7ff' },
+  see: { guide: '#a6f7ff', stroke: '#d2c2ff' },
+  follow: { guide: '#9dfff0', stroke: '#c4e4ff' },
+  remember: { guide: '#d2c2ff', stroke: '#a6f0ff' },
+  listen: { guide: '#eef2ff', stroke: '#c4d2ff' },
+  daily: { guide: '#f0c8ff', stroke: '#b4f2ff' },
+  free: { guide: '#8ff0ff', stroke: '#dccfff' },
 };
+const CHORUS_INK = '#a58cff';
+/** Grand écran : un panneau à gauche, le champ à droite. Même seuil que la feuille de style. */
+const WIDE = matchMedia('(min-width: 1000px) and (min-height: 560px) and (min-aspect-ratio: 5/4)');
 
 boot();
 
@@ -48,16 +54,16 @@ async function boot() {
     return;
   }
   try { D = await import('./phrase.js'); } catch { /* improvisation indisponible : le jeu reste */ }
-  const app = new Resonance(E, D);
+  const app = new Cymora(E, D);
   i18n.onChange(() => app.relabel());
-  if (new URLSearchParams(location.search).has('debug')) globalThis.__resonance = app; // QA uniquement
+  if (new URLSearchParams(location.search).has('debug')) globalThis.__cymora = app; // QA uniquement
   app.start();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('./sw.js').catch(() => { /* hors ligne indisponible : l'app marche quand même */ });
   }
 }
 
-class Resonance {
+class Cymora {
   constructor(E, D) {
     this.E = E;
     this.D = D;
@@ -104,7 +110,7 @@ class Resonance {
   // ---------------------------------------------------------------- progression
 
   load() {
-    try { return G.readProgress(localStorage.getItem(STORE)); } catch { return G.freshProgress(); }
+    try { return G.readProgress(stored(STORE)); } catch { return G.freshProgress(); }
   }
 
   save() {
@@ -134,6 +140,7 @@ class Resonance {
     const map = $('#map');
     $('#map-daily').addEventListener('click', () => { map.close(); this.startDaily(); });
     $('#map-free').addEventListener('click', () => { map.close(); this.startFree(); });
+    $('#side-map').addEventListener('click', () => this.openMap());
     $('#reset').addEventListener('click', () => {
       const before = this.progress;
       this.progress = G.freshProgress();
@@ -199,10 +206,88 @@ class Resonance {
     else if (this.mode === 'daily') label = t('where.daily');
     else if (this.mode === 'free') label = t('where.free');
     $('#where-label').textContent = label;
+    this.updateSide();
     const pearls = $('#pearls');
     if (this.mode === 'tide') pearls.replaceWith(Object.assign(this.pearlsFor(this.tideIdx), { id: 'pearls' }));
     else pearls.replaceChildren();
     this.syncSound();
+  }
+
+  /** Panneau latéral du grand écran : où l'on est, ce qu'on attend de toi, le dernier accord, le chœur. */
+  updateSide() {
+    let kicker = '';
+    let title = '';
+    let line = '';
+    if (this.mode === 'tide') {
+      const id = G.TIDES[this.tideIdx].id;
+      kicker = `${t('card.tide', { n: ROMAN[this.tideIdx] })} · ${Math.min(G.MOTIFS_PER_TIDE, (this.motifIdx ?? 0) + 1)}/${G.MOTIFS_PER_TIDE}`;
+      title = t(`tide.${id}`);
+      line = t(`line.${id}`);
+    } else if (this.mode === 'daily') {
+      kicker = this.today;
+      title = t('card.daily');
+      line = t('side.dailyLine');
+    } else if (this.mode === 'free') {
+      kicker = t('where.free');
+      title = t('card.free');
+      line = t('card.freeLine');
+    }
+    $('#side-kicker').textContent = kicker;
+    $('#side-title').textContent = title;
+    $('#side-line').textContent = line;
+    $('#side-pearls').replaceChildren(...(this.mode === 'tide' ? [this.pearlsFor(this.tideIdx)] : []));
+    const score = $('#side-score');
+    score.replaceChildren();
+    if (this.result && this.mode !== 'free' && this.result.verdict !== 'silent') {
+      const b = document.createElement('b');
+      b.textContent = t('side.score', { n: Math.round(this.result.score * 100) });
+      score.append(b, t(this.result.verdict === 'resonance' ? 'w.resonance' : this.result.verdict === 'close' ? 'w.close' : 'w.far'));
+    }
+    $('#side-chorus').textContent = this.mode === 'daily' ? this.chorusLine() : '';
+  }
+
+  chorusLine() {
+    const c = this.chorus;
+    if (!c) return '';
+    if (this.joined) return c.voices <= 1 ? t('chorus.first') : t('chorus.joined', { n: c.voices });
+    return c.voices === 0 ? t('chorus.none') : c.voices === 1 ? t('chorus.one') : t('chorus.count', { n: c.voices });
+  }
+
+  // ---------------------------------------------------------------- chœur du jour
+
+  async loadChorus() {
+    if (!/^https?:$/.test(location.protocol)) return;
+    try {
+      const r = await fetch(`./api/day/${this.today}`, { cache: 'no-store' });
+      if (r.ok) this.setChorus(await r.json());
+    } catch { /* hors ligne : le chant du jour reste jouable, sans chœur */ }
+  }
+
+  setChorus(c) {
+    if (!c || c.day !== this.today || !Array.isArray(c.traces)) return;
+    const paths = c.traces.filter((tr) => G.validTrace(tr)).map((tr) => tr.y.map((y, i) => ({ x: 0.16 + (0.68 * i) / (tr.y.length - 1), y })));
+    this.chorus = { voices: c.voices | 0, resonant: c.resonant | 0, paths };
+    this.updateSide();
+  }
+
+  /** Une réponse accordée au chant du jour rejoint le chœur, une fois par jour : 48 hauteurs, une durée, rien d'autre. */
+  async joinChorus(points) {
+    const key = `cymora.chorus.${this.today}`;
+    try { if (localStorage.getItem(key)) { this.joined = true; return; } } catch { /* sans stockage : une fois par séance */ }
+    if (this.joining || this.joined || !/^https?:$/.test(location.protocol)) return;
+    const trace = G.chorusTrace(points);
+    if (!trace) return;
+    this.joining = true;
+    try {
+      const r = await fetch(`./api/day/${this.today}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(trace) });
+      if (!r.ok) return;
+      const out = await r.json();
+      if (out.joined) {
+        this.joined = true;
+        try { localStorage.setItem(key, '1'); } catch { /* sans stockage */ }
+      }
+      this.setChorus(out.chorus);
+    } catch { /* hors ligne : la réponse compte quand même pour toi */ } finally { this.joining = false; }
   }
 
   setTone(id) {
@@ -215,6 +300,7 @@ class Resonance {
   startTide(k) {
     if (k >= G.TIDES.length) return this.endOfTides();
     this.mode = 'tide';
+    this.result = null;
     this.tideIdx = k;
     // Une marée déjà franchie se rejoue depuis son premier chant ; la marée en cours reprend où l'on était.
     this.motifIdx = k === this.progress.tide ? this.progress.index : 0;
@@ -226,6 +312,10 @@ class Resonance {
 
   startDaily() {
     this.mode = 'daily';
+    this.result = null;
+    this.chorusShown = false;
+    try { this.joined = Boolean(localStorage.getItem(`cymora.chorus.${this.today}`)); } catch { this.joined = false; }
+    this.loadChorus();
     this.setTone('daily');
     this.relabel();
     const done = (this.progress.days[this.today] ?? 0) >= G.PASS;
@@ -240,7 +330,7 @@ class Resonance {
     this.showCard(t('card.free'), t('card.freeLine'));
     if (this.D && !this.dialogue) {
       let memory = [];
-      try { memory = JSON.parse(localStorage.getItem(FREE_STORE) ?? '[]'); } catch { memory = []; }
+      try { memory = JSON.parse(stored(FREE_STORE) ?? '[]'); } catch { memory = []; }
       try { this.dialogue = this.D.createDialogue({ silence: 1.4, seed: 7, memory }); } catch { this.dialogue = this.D.createDialogue({ silence: 1.4, seed: 7 }); }
     }
     this.play = null;
@@ -260,6 +350,7 @@ class Resonance {
     this.motif = this.mode === 'daily' ? G.dailyMotif(this.today) : G.tideMotif(this.tideIdx, this.motifIdx);
     this.trace = G.motifTrace(this.motif);
     this.attempts = 0;
+    this.updateSide();
     this.enterCall();
   }
 
@@ -313,6 +404,8 @@ class Resonance {
     } else {
       this.progress = G.recordDay(this.progress, this.today, r.score);
       this.echoNext = pass ? 'dailyDone' : 'again';
+      this.chorusShown = true;
+      if (pass) this.joinChorus(points);
     }
     this.save();
     this.relabel();
@@ -344,6 +437,7 @@ class Resonance {
     if (next === 'dailyDone') {
       const streak = G.liveStreak(this.progress, this.today);
       this.showCard(t('card.dailyDone'), `${t('card.dailyNext')}${streak ? ` ${t('streak', { n: streak })}.` : ''}`);
+      if (this.chorus?.paths.length) setTimeout(() => this.whisper(this.joined ? this.chorusLine() : t('chorus.seen'), 5200), 6200);
       this.phase = 'idle';
       this.relabel();
     }
@@ -625,8 +719,26 @@ class Resonance {
       c.height = Math.round(h * dpr);
     }
     // Le champ est carré ; il laisse de l'air pour la barre et le murmure.
-    const size = Math.min(w * (w < 640 ? 0.96 : 0.9), h * (h < 520 ? 0.86 : 0.8));
-    this.rectCss = { x: (w - size) / 2, y: (h - size) / 2 + (h < 520 ? 8 : 0), size };
+    // Sur grand écran, un panneau occupe la gauche et le champ grandit dans l'espace restant.
+    const wide = WIDE.matches;
+    document.body.dataset.layout = wide ? 'wide' : 'compact';
+    let size;
+    let x;
+    let y;
+    if (wide) {
+      const side = clamp(w * 0.24, 290, 380);
+      size = Math.min(h * 0.88, w - side - 120);
+      x = side + 32 + (w - side - 32 - size) / 2;
+      y = (h - size) / 2 + 12;
+      document.body.style.setProperty('--side-w', `${side}px`);
+    } else {
+      size = Math.min(w * (w < 640 ? 0.96 : 0.9), h * (h < 520 ? 0.86 : 0.8));
+      x = (w - size) / 2;
+      y = (h - size) / 2 + (h < 520 ? 8 : 0);
+    }
+    this.rectCss = { x, y, size };
+    document.body.style.setProperty('--field-cx', `${x + size / 2}px`);
+    document.body.style.setProperty('--field-bottom', `${Math.max(16, h - (y + size) + 18)}px`);
     this.rect = { x: this.rectCss.x * dpr, y: this.rectCss.y * dpr, size: size * dpr };
     this.dpr = dpr;
     try {
@@ -643,7 +755,7 @@ class Resonance {
       this.renderer = createRenderer({ prefer: '2d' });
       this.renderer.resize(cv.width, cv.height);
     }
-    this.renderer.draw(this.world.p ?? this.objectView(this.world.particles), { rect: this.rect, persistence: 0.9, dpr: this.dpr, bloom: 0.5 });
+    this.renderer.draw(this.world.p ?? this.objectView(this.world.particles), { rect: this.rect, persistence: 0.86, dpr: this.dpr, bloom: 0.32 });
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.globalCompositeOperation = 'lighter';
@@ -708,6 +820,12 @@ class Resonance {
         line(this.trace, inks.guide, 2.2, 0.75 * fade);
       }
     }
+
+    // Le chœur du jour, en filigrane, une fois qu'on a soi-même répondu.
+    if (this.mode === 'daily' && this.chorusShown && this.chorus?.paths.length && this.phase !== 'call' && this.phase !== 'turn') {
+      const appear = clamp((this.clock - (this.chorusAt ??= this.clock)) / 2.5, 0, 1);
+      for (const path of this.chorus.paths) line(path, CHORUS_INK, 1.1, 0.16 * appear, path.length);
+    } else this.chorusAt = null;
 
     if (this.mode === 'free' && this.play?.trace?.length) {
       const time = this.clock - this.play.start;

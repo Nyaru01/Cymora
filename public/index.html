@@ -3,13 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="Résonance — the matter sings, you answer with a gesture. A calm musical game, free, without account. / La matière chante, tu lui réponds d’un geste. Un jeu musical apaisé, gratuit, sans compte.">
+  <meta name="description" content="Cymora — the matter sings, you answer with a gesture. A calm musical game, free, without account. / La matière chante, tu lui réponds d’un geste. Un jeu musical apaisé, gratuit, sans compte.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07060f">
-  <title>Résonance</title>
+  <meta name="theme-color" content="#04050d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cymora">
+  <title>Cymora</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="icon" href="./icons/favicon-64.png" type="image/png" sizes="64x64">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./src/styles.css">
 </head>
 <body data-state="threshold" data-tide="see">
@@ -20,6 +25,17 @@
     <div class="card" id="card" aria-live="polite"><p class="card__title" id="card-title"></p><p class="card__line" id="card-line"></p></div>
     <div class="fatal" id="fatal" role="alert" hidden></div>
   </main>
+
+  <aside class="side" id="side" data-i18n-attr="aria-label:bar.label">
+    <p class="side__kicker" id="side-kicker"></p>
+    <h2 class="side__title" id="side-title"></h2>
+    <p class="side__line" id="side-line"></p>
+    <div id="side-pearls"></div>
+    <p class="side__score" id="side-score"></p>
+    <p class="side__chorus" id="side-chorus"></p>
+    <p class="side__keys" data-i18n="side.keys"></p>
+    <button type="button" class="link link--quiet" id="side-map" data-i18n="journey">Ton voyage</button>
+  </aside>
 
   <header class="bar" data-i18n-attr="aria-label:bar.label">
     <button type="button" class="bar__where" id="where" aria-haspopup="dialog">
@@ -33,7 +49,7 @@
   </header>
 
   <section class="threshold" id="threshold" aria-labelledby="title">
-    <h1 class="threshold__title" id="title">Résonance</h1>
+    <h1 class="threshold__title" id="title"><img class="threshold__logo" src="./icons/cymora-hero.jpg" alt="Cymora" width="880" height="880"></h1>
     <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
     <div class="threshold__actions">
       <button type="button" class="enter" id="begin"><span id="begin-label" data-i18n="begin">Commencer</span> <span class="enter__soft" data-i18n="withSound">avec le son</span></button>

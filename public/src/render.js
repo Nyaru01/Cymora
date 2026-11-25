@@ -7,14 +7,14 @@
 // indexables (Float32Array de préférence), coordonnées monde [0,1].
 
 export const PALETTE = Object.freeze([
-  [0.106, 0.365, 0.612], // #1b5d9c abysses
-  [0.165, 0.561, 0.816], // #2a8fd0
-  [0.247, 0.769, 0.902], // #3fc4e6
-  [0.373, 1.0, 0.816], //   #5fffd0 menthe
-  [0.722, 1.0, 0.914], //   #b8ffe9
-  [1.0, 1.0, 1.0], //       écume
+  [0.227, 0.114, 0.478], // #3a1d7a violet profond
+  [0.416, 0.247, 0.847], // #6a3fd8 violet
+  [0.31, 0.482, 0.941], //  #4f7bf0 indigo
+  [0.184, 0.839, 0.91], //  #2fd6e8 cyan
+  [0.624, 0.965, 1.0], //   #9ff6ff aqua
+  [1.0, 1.0, 1.0], //       blanc
 ]);
-const PALETTE_CSS = ['#1b5d9c', '#2a8fd0', '#3fc4e6', '#5fffd0', '#b8ffe9', '#ffffff'];
+const PALETTE_CSS = ['#3a1d7a', '#6a3fd8', '#4f7bf0', '#2fd6e8', '#9ff6ff', '#ffffff'];
 
 /** Position [0,1] dans la palette selon la vitesse (échelle logarithmique). */
 export function speedToT(speed, ref = 0.008, span = 30) {
@@ -109,8 +109,8 @@ void main() {
 
 const PALETTE_GLSL = `
 vec3 palette(float t) {
-  vec3 c0 = vec3(0.106, 0.365, 0.612), c1 = vec3(0.165, 0.561, 0.816), c2 = vec3(0.247, 0.769, 0.902);
-  vec3 c3 = vec3(0.373, 1.0, 0.816), c4 = vec3(0.722, 1.0, 0.914), c5 = vec3(1.0);
+  vec3 c0 = vec3(0.227, 0.114, 0.478), c1 = vec3(0.416, 0.247, 0.847), c2 = vec3(0.31, 0.482, 0.941);
+  vec3 c3 = vec3(0.184, 0.839, 0.91), c4 = vec3(0.624, 0.965, 1.0), c5 = vec3(1.0);
   float s = t * 5.0;
   if (s < 1.0) return mix(c0, c1, s);
   if (s < 2.0) return mix(c1, c2, s - 1.0);
@@ -128,7 +128,7 @@ ${PALETTE_GLSL}
 void main() {
   float light = v_attr.y;
   vec3 base = palette(v_attr.x) * (0.55 + v_attr.x * 0.45);
-  vec3 lum = vec3(0.45, 1.0, 0.9) * light * 0.9; // lueur des dinoflagellés
+  vec3 lum = vec3(0.3, 0.92, 1.0) * light * 0.5; // lueur néon cyan des figures
   o = vec4((base + lum) * v_attr.z * u_gain, v_attr.z);
 }`;
 
@@ -141,7 +141,7 @@ void main() {
   float r = dot(d, d);
   if (r > 1.0 || v_attr.y < 0.04) discard;
   float a = exp(-r * 3.5) * v_attr.y * v_attr.z;
-  o = vec4(vec3(0.45, 1.0, 0.88) * a * 0.45, a * 0.5);
+  o = vec4(vec3(0.5, 0.55, 1.0) * a * 0.3, a * 0.4); // halo violet
 }`;
 
 const FS_BLUR = `#version 300 es
@@ -317,7 +317,7 @@ function createGLRenderer(doc) {
         gl.useProgram(seg.p);
         gl.uniform2f(seg.u.u_res, W, H);
         gl.uniform1f(seg.u.u_point, 1);
-        gl.uniform1f(seg.u.u_gain, 1.1);
+        gl.uniform1f(seg.u.u_gain, 0.8);
         gl.drawArrays(gl.LINES, 0, count);
         gl.useProgram(glow.p);
         gl.uniform2f(glow.u.u_res, W, H);
@@ -408,7 +408,7 @@ function create2DRenderer(doc) {
       });
       // Plancton lumineux : petits halos.
       if (view.light) {
-        ctx.fillStyle = '#8dffe0';
+        ctx.fillStyle = '#7fe9ff';
         for (let i = 0; i < view.n; i++) {
           const l = view.light[i];
           if (l < 0.15) continue;

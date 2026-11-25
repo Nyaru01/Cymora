@@ -1,8 +1,8 @@
-// RÉSONANCE — hors ligne. Auteur : CLAUDE.
+// CYMORA — hors ligne. Auteur : CLAUDE.
 // La page vient du réseau quand il est là (pour recevoir les mises à jour), du cache sinon ;
 // les autres fichiers viennent du cache et se rafraîchissent en arrière-plan.
-const CACHE = 'resonance-v1';
-const SHELL = ['./', './index.html', './manifest.json', './favicon.svg', './icons/icon-192.png', './icons/icon-512.png',
+const CACHE = 'cymora-v2';
+const SHELL = ['./', './index.html', './manifest.json', './favicon.svg', './icons/icon-192.png', './icons/cymora-hero.jpg',
   './shared/i18n.js', './src/app.js', './src/game.js', './src/strings.js', './src/styles.css', './src/audio.js',
   './src/cymatics.js', './src/engine.js', './src/render.js', './src/phrase.js'];
 

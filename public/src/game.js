@@ -116,6 +116,36 @@ export function tideMotif(tide, index) {
   return motif(hash(`tide:${t.id}:${index}`), count, t.span);
 }
 
+/** Atelier « Tenir » : temps (s) pendant lequel le doigt doit rester sur une note cerclée. */
+export const HOLD = 1.3;
+
+/**
+ * Un chant de l'atelier « Tenir » : un motif ordinaire dont une note (deux à partir du troisième)
+ * devient longue et cerclée (`hold`). Jamais la première : on y arrive en traçant.
+ */
+export function holdMotif(index) {
+  const i = Math.max(0, Math.floor(index));
+  const m = motif(hash(`hold:${i}`), 3 + Math.min(2, i), 4);
+  const last = m.notes.length - 1;
+  const k = 1 + Math.floor(rng(m.seed ^ 0x51ed)() * last);
+  const picks = new Set([k]);
+  if (i >= 2 && last >= 3) picks.add(k === last ? 1 : last);
+  let at = 0;
+  const notes = m.notes.map((n, j) => {
+    const hold = picks.has(j);
+    const dur = hold ? round(HOLD + 0.6, 3) : n.dur;
+    const out = { deg: n.deg, at: round(at, 3), dur, ...(hold ? { hold: true } : {}) };
+    at += dur + 0.1;
+    return out;
+  });
+  return { seed: m.seed, notes, duration: round(at - 0.1, 3) };
+}
+
+/** Verdict d'un score, selon le seuil pour avancer. */
+export function verdictOf(score, pass = PASS) {
+  return score >= RESONANCE ? 'resonance' : score >= pass ? 'close' : score >= NEAR ? 'near' : 'far';
+}
+
 /** La résonance du jour : la même pour tout le monde, à date égale (AAAA-MM-JJ). */
 export function dailyMotif(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date invalide.');

@@ -1,7 +1,7 @@
 # Reprendre Cymora — note de passation
 
 > À lire en premier par toute personne (ou tout agent) qui reprend le projet sur une autre machine.
-> État au 25 novembre 2026 : **version 1.6.1**, en ligne et identique à la branche GitHub `Resonance`.
+> État au 25 novembre 2026 : **version 1.8.1**, en ligne et identique à la branche GitHub `Resonance`.
 
 ## En deux mots
 
@@ -9,13 +9,13 @@
 
 - **Parcours :** 4 chapitres de 5 chants (Voir, Suivre, Se souvenir, Écouter), une *résonance du jour* partagée (le chœur) et une *improvisation* libre.
 - **En ligne :** https://cymora.up.railway.app (Railway, projet `resonance`, services `resonance` et `Postgres`).
-- **Code :** https://github.com/Nyaru01/Duo, **branche `Resonance`** (et non `main`, qui contient l'ancien projet).
+- **Code :** https://github.com/Nyaru01/Cymora, **branche `Resonance`** (et non `main`, qui contient l'ancien projet).
 - **Langue :** tout le texte visible est en **français uniquement** (l'anglais a été retiré exprès).
 
 ## Récupérer et lancer
 
 ```powershell
-git clone -b Resonance https://github.com/Nyaru01/Duo.git cymora
+git clone -b Resonance https://github.com/Nyaru01/Cymora.git cymora
 cd cymora
 npm ci
 npm start            # http://127.0.0.1:4173 (variable PORT pour changer)
@@ -82,7 +82,8 @@ railway up --ci --service resonance
 
 ## Ce qui reste ouvert
 
-- **Vibrations :** le propriétaire n'en ressent toujours aucune sur son téléphone. On ne sait pas encore s'il s'agit d'un iPhone (Safari ne fait jamais vibrer depuis une page web ; seul un « tic » est tenté sur iOS 18 et plus) ou d'un Android (le menu affiche alors si le navigateur a accepté ou refusé). **Première question à lui poser.**
+- **Vibrations :** résolu (Android). Le réglage système coupait tout ; en jeu, les impulsions de moins de 50 ms ne se sentaient pas : elles font maintenant 50 ms au moins.
+- **Phase 0 (prototypes de gestes) :** l'« Atelier · Tenir » (carte, bouton en pointillés) teste les notes tenues (`holdMotif` et `HOLD` dans game.js, `stepHold` et `followTune` dans app.js). Il ne touche pas à la progression. Plan : essayer tenir, glisser, rythme, silence, puis garder 2 ou 3 gestes pour de vrais chapitres.
 - `public/vid/gemini_generated_video_eb89f13f.mp4` : une autre vidéo, non utilisée, non commitée et exclue du déploiement.
 
 ## Idées essayées puis abandonnées (ne pas reproposer telles quelles)

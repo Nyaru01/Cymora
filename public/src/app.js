@@ -24,7 +24,7 @@ const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.19.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.19.1'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -312,11 +312,13 @@ function startIntro() {
   v.play().then(arm, () => {
     // Son refusé avant tout geste : plutôt qu'une intro muette, on invite à toucher ; elle part alors avec le son.
     waiting = true;
+    document.body.classList.add('intro-gate');
     const gate = $('#splash-gate');
     gate.hidden = false;
     const enter = () => {
       gate.hidden = true;
       waiting = false;
+      document.body.classList.remove('intro-gate');
       if (intro.ended) return; // « Passer » touché : on ne relance pas l'intro derrière l'accueil
       v.muted = false;
       v.play().then(arm, () => { v.muted = true; v.play().then(() => { sound.hidden = false; arm(); }, fallback); });

@@ -417,7 +417,24 @@ body.no-intro .splash__video, body.no-intro .splash__glow, body.no-intro .splash
 .splash__gate-line .phones { width: 16px; height: 16px; }
 /* Écran d'entrée : la nuit de l'accueil, la rosace qui respire, un plancton qui dérive. */
 body.intro-gate .splash { place-content: center; gap: clamp(14px, 3vh, 30px); background: radial-gradient(ellipse 70% 60% at 50% 42%, #0b1d3a 0%, #03040b 75%); }
-body.intro-gate .splash__logo { display: block; width: min(64vw, 46vh, 420px); animation: gateBreath 5s ease-in-out infinite; }
+/* Fond vidéo muet de l'écran d'entrée, à la place de la rosace. */
+/* Taille bornée : jamais plus grande que sa résolution (1280 px), ni que la hauteur de l'écran ; bords fondus dans la nuit. */
+.splash__ambient { position: absolute; left: 50%; top: 44%; width: min(1280px, 100vw, 118vh); height: auto; aspect-ratio: 16 / 9; transform: translate(-50%, -50%); object-fit: cover; z-index: -2; opacity: 0; pointer-events: none; transition: opacity 1.6s var(--slow);
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%); mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%); }
+body.intro-gate .splash__ambient { opacity: 0.9; filter: blur(3px) saturate(1.08); } /* flou doux */
+/* Sortie de l'écran d'entrée : vidéo, plancton et voile s'effacent ensemble, pendant que l'intro apparaît. */
+body.intro-gate .splash::before, body.intro-gate .splash::after { transition: opacity 2.2s var(--slow); }
+body.intro-gate.gate-leaving .splash__ambient, body.intro-gate.gate-leaving .splash::before, body.intro-gate.gate-leaving .splash::after { opacity: 0; }
+.splash__ambient { transition: opacity 2.2s var(--slow), filter 2.2s var(--slow); }
+body.intro-gate .splash__logo { display: none; }
+/* Portrait : la vidéo déborde un peu sur les côtés ; ses bords se fondent en ellipse. */
+@media (max-aspect-ratio: 1/1) {
+  /* Un peu plus large que l'écran (le titre reste entier) et un fondu elliptique long : aucune ligne droite en haut ni en bas. */
+  .splash__ambient { width: 124vw; top: 42%; -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 30%, rgba(0, 0, 0, 0.5) 62%, transparent 92%); mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 30%, rgba(0, 0, 0, 0.5) 62%, transparent 92%); }
+}
+body.intro-gate .splash__glow { display: none; }
+body.intro-gate .splash::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 60% 40% at 50% 58%, rgba(3, 4, 11, 0.55), transparent 70%); }
+body.intro-gate .splash { place-content: end center; padding-bottom: max(14vh, 90px); }
 body.intro-gate .splash::before { content: ''; position: absolute; inset: -20%; z-index: -1; pointer-events: none; opacity: 0.55;
   background-image: radial-gradient(1.5px 1.5px at 12% 22%, #9ff6ff, transparent), radial-gradient(1px 1px at 28% 68%, #d2c2ff, transparent), radial-gradient(2px 2px at 44% 36%, #8ff0ff, transparent), radial-gradient(1px 1px at 58% 82%, #fff, transparent), radial-gradient(1.5px 1.5px at 72% 18%, #d2c2ff, transparent), radial-gradient(1px 1px at 86% 58%, #9ff6ff, transparent), radial-gradient(2px 2px at 92% 88%, #8ff0ff, transparent), radial-gradient(1px 1px at 6% 90%, #fff, transparent);
   background-size: 420px 420px; animation: plankton 60s linear infinite; }

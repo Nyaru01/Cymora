@@ -24,7 +24,7 @@ const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.19.1'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.19.5'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -313,13 +313,23 @@ function startIntro() {
     // Son refusé avant tout geste : plutôt qu'une intro muette, on invite à toucher ; elle part alors avec le son.
     waiting = true;
     document.body.classList.add('intro-gate');
+    // Fond de l'écran d'entrée : une vidéo muette en boucle (le son viendra avec l'intro, au toucher).
+    const amb = $('#splash-ambient');
+    if (amb && !amb.src) { amb.src = amb.dataset.src; amb.muted = true; amb.play().catch(() => {}); }
     const gate = $('#splash-gate');
     gate.hidden = false;
     const enter = () => {
       gate.hidden = true;
       waiting = false;
-      document.body.classList.remove('intro-gate');
-      if (intro.ended) return; // « Passer » touché : on ne relance pas l'intro derrière l'accueil
+      // Fondu enchaîné : la vidéo d'entrée reste en place pendant que l'intro apparaît par-dessus,
+      // puis elle s'efface (avec le plancton et le voile) avant de s'arrêter.
+      const amb = $('#splash-ambient');
+      const leave = () => {
+        document.body.classList.add('gate-leaving');
+        setTimeout(() => { document.body.classList.remove('intro-gate', 'gate-leaving'); amb?.pause(); }, 2400);
+      };
+      if (intro.ended) { leave(); return; } // « Passer » touché : on ne relance pas l'intro derrière l'accueil
+      v.addEventListener('playing', () => setTimeout(leave, 500), { once: true });
       v.muted = false;
       v.play().then(arm, () => { v.muted = true; v.play().then(() => { sound.hidden = false; arm(); }, fallback); });
     };
@@ -328,14 +338,15 @@ function startIntro() {
   setTimeout(() => { if (!waiting && !document.body.classList.contains('has-intro')) fallback(); }, 4000);
 }
 /** Écran large : la vidéo (portrait) est prolongée sur les côtés par son propre reflet, flou. */
-function glowLoop(v) {
+function glowLoop(v, ambient = false) {
   const cv = $('#splash-glow');
   const g = cv.getContext('2d');
   const tick = () => {
     if (document.body.dataset.state !== 'loading' || getComputedStyle(cv).display === 'none') return;
+    if (ambient !== document.body.classList.contains('intro-gate')) return; // une seule source à la fois
     const W = innerWidth;
     const H = innerHeight;
-    if (W > H * 0.8) {
+    if (ambient || W > H * 0.8) {
       const h = 36;
       const w = Math.round((h * W) / H);
       if (cv.width !== w) { cv.width = w; cv.height = h; }
@@ -343,7 +354,7 @@ function glowLoop(v) {
       const vw = v.videoWidth || 720;
       const vh = v.videoHeight || 1280;
       // Vidéo PC : on laisse de côté ses bandes noires (12 % en haut et en bas) pour le reflet.
-      const crop = document.body.classList.contains('intro-wide') ? 0.12 : 0;
+      const crop = !ambient && document.body.classList.contains('intro-wide') ? 0.12 : 0;
       const sh = vh * (1 - 2 * crop);
       const k = Math.max(w / vw, h / sh);
       g.drawImage(v, 0, vh * crop, vw, sh, (w - vw * k) / 2, (h - sh * k) / 2, vw * k, sh * k);

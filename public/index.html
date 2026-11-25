@@ -28,6 +28,7 @@
   </main>
 
   <aside class="side" id="side" data-i18n-attr="aria-label:bar.label">
+    <p class="side__num" id="side-num" aria-hidden="true"></p>
     <p class="side__kicker" id="side-kicker"></p>
     <h2 class="side__title" id="side-title"></h2>
     <p class="side__story" id="side-story"></p>
@@ -35,8 +36,7 @@
     <div id="side-pearls"></div>
     <p class="side__score" id="side-score"></p>
     <p class="side__chorus" id="side-chorus"></p>
-    <p class="side__keys" data-i18n="side.keys"></p>
-    <button type="button" class="link link--quiet" id="side-map" data-i18n="journey">Ton voyage</button>
+    <button type="button" class="link link--quiet side__map" id="side-map" data-i18n="journey">Ton voyage</button>
   </aside>
 
   <header class="bar" data-i18n-attr="aria-label:bar.label">
@@ -45,7 +45,7 @@
       <span class="pearls" id="pearls"></span>
     </button>
     <div class="bar__end">
-      <span class="score" id="score" role="status"><svg class="score__star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.9h7.2l-5.8 4.2 2.2 6.9L12 16.3l-5.8 4.2 2.2-6.9-5.8-4.2h7.2z" fill="currentColor"/></svg><span id="score-value">0</span><span class="score__saved" id="score-saved" aria-hidden="true">✓</span></span>
+      <span class="score" id="score" role="status"><svg class="score__star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.9h7.2l-5.8 4.2 2.2 6.9L12 16.3l-5.8 4.2 2.2-6.9-5.8-4.2h7.2z" fill="currentColor"/></svg><span id="score-value">0</span></span>
       <button type="button" class="pill pill--icon" id="sound" aria-pressed="false"><svg class="sound__on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="sound__off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div id="lang"></div>
     </div>

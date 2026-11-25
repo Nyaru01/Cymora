@@ -68,10 +68,12 @@ body[data-state="threshold"] .scene__matter, body[data-state="loading"] .scene__
   color: var(--soft);
   text-shadow: 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent);
   opacity: 0;
-  transition: opacity 1.4s var(--slow);
+  filter: blur(4px);
+  translate: 0 8px;
+  transition: opacity 1.2s var(--slow), filter 1.2s var(--slow), translate 1.2s var(--slow);
   pointer-events: none;
 }
-.whisper.is-on { opacity: 0.9; }
+.whisper.is-on { opacity: 0.9; filter: none; translate: 0 0; }
 
 .card {
   position: absolute;
@@ -84,7 +86,8 @@ body[data-state="threshold"] .scene__matter, body[data-state="loading"] .scene__
   opacity: 0;
   transition: opacity 1.8s var(--slow);
 }
-.card.is-on { opacity: 1; }
+.card { filter: blur(8px); translate: 0 10px; transition: opacity 1.6s var(--slow), filter 1.6s var(--slow), translate 1.6s var(--slow); }
+.card.is-on { opacity: 1; filter: none; translate: 0 0; }
 .card__title { margin: 0 0 10px; font: italic 400 clamp(30px, 5vw, 52px)/1.1 var(--serif); color: var(--accent); text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 40%, transparent); }
 .card__line { margin: 0; font: italic clamp(17px, 2vw, 22px)/1.45 var(--serif); color: var(--dim); }
 .card__line:empty, .card__hint:empty { display: none; }
@@ -178,9 +181,8 @@ body:not([data-state="play"]) .score { display: none; }
 .score__star { width: 15px; height: 15px; color: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
 .score.is-up { animation: scoreUp 1.2s var(--ease); }
 @keyframes scoreUp { 30% { border-color: var(--accent); box-shadow: 0 0 26px -4px var(--accent); transform: scale(1.06); } }
-.score__saved { width: 0; overflow: hidden; color: var(--accent); font-size: 12px; opacity: 0; transition: width 0.3s; }
-.score__saved.is-on { animation: saved 2.2s var(--ease); }
-@keyframes saved { 10%, 70% { opacity: 1; width: 12px; } 100% { opacity: 0; width: 0; } }
+.score.is-saved .score__star { animation: twinkle 1.4s var(--ease); }
+@keyframes twinkle { 35% { transform: rotate(72deg) scale(1.35); filter: drop-shadow(0 0 10px var(--accent)) brightness(1.6); } }
 .pill--icon { display: inline-grid; place-items: center; width: 44px; padding: 0; }
 .pill--icon svg { width: 20px; height: 20px; }
 #sound .sound__on { display: none; }
@@ -258,7 +260,10 @@ body:not([data-state="play"]) .score { display: none; }
   background: radial-gradient(ellipse 60% 55% at 50% 50%, transparent, color-mix(in srgb, var(--bg-2) 70%, transparent));
   transition: opacity 1.8s var(--slow), visibility 0s linear 1.8s;
 }
-body:not([data-state="threshold"]) .threshold { opacity: 0; visibility: hidden; pointer-events: none; }
+body:not([data-state="threshold"]) .threshold { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(1.06); filter: blur(10px); }
+.threshold { transition: opacity 1.8s var(--slow), transform 2.2s var(--slow), filter 1.8s var(--slow), visibility 0s linear 2.2s; }
+body[data-state="threshold"] .threshold { transition: opacity 1.4s var(--slow), transform 1.8s var(--slow), filter 1.4s var(--slow), visibility 0s; }
+.scene__matter { transition: filter 2.6s var(--slow); }
 .threshold__title { margin: 0 0 4px; line-height: 0; }
 .threshold__logo {
   display: block;
@@ -335,7 +340,8 @@ body:not([data-state="threshold"]) .threshold { opacity: 0; visibility: hidden; 
   background: radial-gradient(ellipse 70% 60% at 50% 42%, #0b1d3a 0%, #03040b 75%);
   transition: opacity 1.4s var(--slow), visibility 0s linear 1.4s;
 }
-body:not([data-state="loading"]) .splash { opacity: 0; visibility: hidden; pointer-events: none; }
+body:not([data-state="loading"]) .splash { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(1.04); filter: blur(8px); }
+.splash { transition: opacity 1.4s var(--slow), transform 1.8s var(--slow), filter 1.4s var(--slow), visibility 0s linear 1.8s; }
 .splash__logo {
   width: min(300px, 62vw, 36vh);
   height: auto;
@@ -423,37 +429,49 @@ body:not([data-state="loading"]) .splash { opacity: 0; visibility: hidden; point
 }
 .toast button { margin-left: 10px; min-height: 32px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 
-/* ---------- Panneau latéral (grand écran) ---------- */
+/* ---------- Panneau latéral (grand écran) ----------
+   Pas de boîte ni d'étiquette en capitales : une page de livre posée dans la nuit.
+   Un grand chiffre romain en filigrane, le titre, le récit ; le reste en retrait. */
 
 .side { display: none; }
 body[data-layout="wide"][data-state="play"] .side {
   position: fixed;
   top: 50%;
-  left: max(32px, env(safe-area-inset-left));
+  left: max(56px, env(safe-area-inset-left));
   transform: translateY(-50%);
   width: var(--side-w, 320px);
   display: grid;
-  gap: 14px;
-  padding: 28px 28px 24px;
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: linear-gradient(170deg, color-mix(in srgb, var(--bg-1) 55%, transparent), var(--glass));
-  backdrop-filter: blur(14px);
-  box-shadow: 0 30px 90px -40px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  animation: rise 0.8s var(--ease);
+  gap: 12px;
+  padding: 0 8px 0 0;
+  transition: opacity 0.65s var(--slow), transform 0.65s var(--slow), filter 0.65s var(--slow);
+  animation: sideIn 1.6s var(--slow);
 }
-.side__kicker { margin: 0; font: 600 11.5px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
-.side__title { margin: 0; font: italic 400 38px/1.05 var(--serif); color: var(--soft); text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 30%, transparent); }
-.side__story { margin: 0; font: italic 18px/1.45 var(--serif); color: var(--soft); opacity: 0.9; }
-.side__story:empty { display: none; }
-.side__line { margin: 0; color: var(--dim); font-size: 14.5px; line-height: 1.55; }
-.side__line:empty, .side__score:empty, .side__chorus:empty { display: none; }
-.side .pearls { gap: 10px; }
-.side .pearl { width: 12px; height: 12px; }
-.side__score { margin: 4px 0 0; font: italic 20px/1.3 var(--serif); color: var(--soft); }
-.side__score b { font: 600 13px/1 var(--mono); letter-spacing: 0.08em; color: var(--accent); margin-right: 8px; font-style: normal; }
-.side__chorus { margin: 0; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent); background: color-mix(in srgb, var(--accent-2) 8%, transparent); color: var(--soft); font-size: 13.5px; line-height: 1.45; }
-.side__keys { margin: 6px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+@keyframes sideIn { from { opacity: 0; transform: translate(-12px, -50%); filter: blur(6px); } }
+.side.is-turning { opacity: 0; transform: translate(-10px, -50%); filter: blur(5px); }
+.side__num {
+  position: absolute;
+  left: -14px;
+  top: -0.62em;
+  margin: 0;
+  font: italic 300 clamp(120px, 13vw, 190px)/1 var(--serif);
+  color: transparent;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, transparent), transparent 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  pointer-events: none;
+  z-index: -1;
+}
+.side__kicker { margin: 0; font: italic 15px/1.3 var(--serif); color: var(--accent); opacity: 0.85; }
+.side__title { margin: 0 0 4px; font: italic 400 46px/1 var(--serif); color: var(--soft); letter-spacing: -0.01em; }
+.side__story { margin: 0; font: italic 19px/1.5 var(--serif); color: var(--soft); opacity: 0.82; max-width: 28ch; }
+.side__line { margin: 2px 0 0; color: var(--faint); font-size: 13.5px; line-height: 1.55; max-width: 32ch; }
+.side__story:empty, .side__line:empty, .side__score:empty, .side__chorus:empty { display: none; }
+.side .pearls { gap: 12px; margin-top: 8px; }
+.side .pearl { width: 9px; height: 9px; }
+.side__score { margin: 6px 0 0; font: italic 17px/1.3 var(--serif); color: var(--dim); }
+.side__score b { font: 400 34px/1 var(--serif); font-style: normal; color: var(--soft); margin-right: 10px; text-shadow: 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent); }
+.side__chorus { margin: 4px 0 0; padding-left: 14px; border-left: 1px solid color-mix(in srgb, var(--accent-2) 55%, transparent); color: var(--dim); font: italic 15px/1.5 var(--serif); }
+.side__map { justify-self: start; margin-top: 10px; padding: 0; }
 body[data-layout="wide"] .bar__where { display: none; }
 
 /* ---------- Grand écran : seuil en deux colonnes ---------- */

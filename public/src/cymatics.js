@@ -97,24 +97,28 @@ const RING = (n) => (n === 0 ? 0 : 0.42 + 0.06 * (n % 3));
 
 const FILL = 0.93; // la figure s'arrête juste avant le bord : le bord n'aspire pas la matière
 
-function inside(n, k, r, theta) {
+/**
+ * « round » (0 à 1) arrondit la figure : le mode radial domine, les pétales ne font plus qu'onduler
+ * des anneaux. Les derniers chapitres chantent en cercles.
+ */
+function inside(n, k, r, theta, round = 0) {
   const a = zero(n, k) * FILL;
   const petals = jn(n, a * r) * Math.cos(n * theta);
   if (n === 0) return petals;
-  return petals + RING(n) * jn(0, zero(0, k + 1) * FILL * r);
+  return petals * (1 - 0.72 * round) + (RING(n) + 0.95 * round) * jn(0, zero(0, k + 1) * FILL * r);
 }
 
 /**
  * Amplitude ψ en (x, y) ∈ [0,1]². Hors de la plaque, |ψ| croît : la matière y est repoussée vers l'intérieur.
  * L'axe de symétrie est vertical : les figures se tiennent debout.
  */
-export function psi(n, k, x, y) {
+export function psi(n, k, x, y, round = 0) {
   const dx = (x - CX) / PLATE;
   const dy = (y - CY) / PLATE;
   const r = Math.hypot(dx, dy);
   const theta = Math.atan2(dy, dx) + PI / 2;
-  if (r < 1) return inside(n, k, r, theta);
-  const edge = inside(n, k, 1, theta);
+  if (r < 1) return inside(n, k, r, theta, round);
+  const edge = inside(n, k, 1, theta, round);
   return (Math.sign(edge) || 1) * (Math.abs(edge) + (r - 1) * 1.5);
 }
 
@@ -131,10 +135,10 @@ export function gradPsi(n, k, x, y) {
  * (deux dérives mêlées ne s'annulent qu'aux croisements, et la matière s'y entasse en points).
  * @returns {{m:number, n:number, v:Float32Array, gx:Float32Array, gy:Float32Array, scale:number, res:number}}
  */
-export function buildField([n, k], res = FIELD_RES) {
+export function buildField([n, k], res = FIELD_RES, round = 0) {
   const size = res * res;
   const v = new Float32Array(size);
-  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) v[j * res + i] = psi(n, k, i / (res - 1), j / (res - 1));
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) v[j * res + i] = psi(n, k, i / (res - 1), j / (res - 1), round);
   let peak = 1e-6;
   for (let j = 0; j < res; j++) {
     for (let i = 0; i < res; i++) {

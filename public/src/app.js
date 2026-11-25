@@ -20,6 +20,7 @@ const FREE_STORE = 'cymora.free.v1';
 const SEEN = 'cymora.prologue.v1';
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
+const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
 const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
 const COUNT = 12000;
 const ROMAN = ['I', 'II', 'III', 'IV'];
@@ -106,6 +107,41 @@ function haptic(pattern) {
   try { navigator.vibrate?.(pattern); } catch { /* pas de vibreur */ }
 }
 
+/**
+ * Le chant dessiné : une perle par note (plus grosse si elle dure), reliées par une courbe douce
+ * (Catmull-Rom) plutôt que par des marches. Chaque point porte l'instant où il est chanté.
+ */
+function songOf(m) {
+  const X = (t) => 0.16 + (0.68 * t) / m.duration;
+  const notes = m.notes.map((n) => ({ x: X(n.at + n.dur / 2), y: G.degreeY(n.deg), at: n.at, dur: n.dur }));
+  const first = notes[0];
+  const last = notes[notes.length - 1];
+  const ctrl = [{ x: X(0), y: first.y }, ...notes, { x: X(m.duration), y: last.y }];
+  const points = [];
+  for (let i = 0; i < ctrl.length - 1; i++) {
+    const p0 = ctrl[Math.max(0, i - 1)];
+    const p1 = ctrl[i];
+    const p2 = ctrl[i + 1];
+    const p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+    for (let k = 0; k < 18; k++) {
+      const u = k / 18;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (3 * b - a - 3 * c + d) * u3);
+      const x = f(p0.x, p1.x, p2.x, p3.x);
+      points.push({ x, y: f(p0.y, p1.y, p2.y, p3.y), at: ((x - 0.16) / 0.68) * m.duration });
+    }
+  }
+  points.push({ x: X(m.duration), y: last.y, at: m.duration });
+  return { points, notes };
+}
+
+/** #rrggbb → rgba(…, a) */
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
 function splashProgress(k) {
   const v = Math.round(clamp(k, 0, 1) * 100);
   $('#splash-fill').style.transform = `scaleX(${v / 100})`;
@@ -160,6 +196,7 @@ class Cymora {
     this.world.nodes = [];
     E.resetParticles(this.world, COUNT);
     this.fields = new Map();
+    this.round = 0;
     this.modeF = 6;
     this.energy = 0;
     this.clock = 0;
@@ -202,10 +239,10 @@ class Cymora {
   save() {
     try {
       localStorage.setItem(STORE, JSON.stringify(this.progress));
-      const mark = $('#score-saved');
-      mark.classList.remove('is-on');
+      const mark = $('#score');
+      mark.classList.remove('is-saved');
       void mark.offsetWidth; // relance l'animation
-      mark.classList.add('is-on');
+      mark.classList.add('is-saved');
     } catch { /* stockage indisponible : la progression vit le temps de la séance */ }
   }
 
@@ -357,7 +394,7 @@ class Cymora {
     let story = '';
     if (this.mode === 'tide') {
       const id = G.TIDES[this.tideIdx].id;
-      kicker = `${t('story.chapter', { n: this.tideIdx + 1 })} · ${Math.min(G.MOTIFS_PER_TIDE, (this.motifIdx ?? 0) + 1)}/${G.MOTIFS_PER_TIDE}`;
+      kicker = `${t('story.chapter', { n: this.tideIdx + 1 })} · ${t('side.song', { n: Math.min(G.MOTIFS_PER_TIDE, (this.motifIdx ?? 0) + 1), of: G.MOTIFS_PER_TIDE })}`;
       title = t(`tide.${id}`);
       story = t(`story.${id}`);
       line = t(`line.${id}`);
@@ -370,10 +407,20 @@ class Cymora {
       title = t('card.free');
       line = t('card.freeLine');
     }
-    $('#side-kicker').textContent = kicker;
-    $('#side-title').textContent = title;
-    $('#side-story').textContent = story;
-    $('#side-line').textContent = line;
+    const side = $('#side');
+    const write = () => {
+      $('#side-num').textContent = this.mode === 'tide' ? ROMAN[this.tideIdx] : this.mode === 'daily' ? '☾' : '∞';
+      $('#side-kicker').textContent = kicker;
+      $('#side-title').textContent = title;
+      $('#side-story').textContent = story;
+      $('#side-line').textContent = line;
+    };
+    // Un nouveau chapitre ne remplace pas l'ancien d'un coup : l'un s'efface, l'autre apparaît.
+    if ($('#side-title').textContent && $('#side-title').textContent !== title && !reducedMotion) {
+      side.classList.add('is-turning');
+      clearTimeout(this.sideTimer);
+      this.sideTimer = setTimeout(() => { write(); side.classList.remove('is-turning'); }, 650);
+    } else write();
     $('#side-pearls').replaceChildren(...(this.mode === 'tide' ? [this.pearlsFor(this.tideIdx)] : []));
     const score = $('#side-score');
     score.replaceChildren();
@@ -444,6 +491,7 @@ class Cymora {
     // Une marée déjà franchie se rejoue depuis son premier chant ; la marée en cours reprend où l'on était.
     this.motifIdx = k === this.progress.tide ? this.progress.index : 0;
     this.setTone(G.TIDES[k].id);
+    this.setRound(k >= 2 ? ROUND : 0);
     this.relabel();
     const id = G.TIDES[k].id;
     this.showCard(t('card.tide', { n: ROMAN[k] }) + ' · ' + t(`tide.${id}`), t(`story.${id}`), t(`line.${id}`), 7000);
@@ -457,6 +505,7 @@ class Cymora {
     try { this.joined = Boolean(localStorage.getItem(`cymora.chorus.${this.today}`)); } catch { this.joined = false; }
     this.loadChorus();
     this.setTone('daily');
+    this.setRound(0);
     this.relabel();
     const done = (this.progress.days[this.today] ?? 0) >= G.PASS;
     this.showCard(t('card.daily'), done ? t('card.dailyDone') : t('card.dailyLine'));
@@ -466,6 +515,7 @@ class Cymora {
   startFree() {
     this.mode = 'free';
     this.setTone('free');
+    this.setRound(0);
     this.relabel();
     this.showCard(t('card.free'), t('card.freeLine'));
     if (this.D && !this.dialogue) {
@@ -490,6 +540,7 @@ class Cymora {
   newMotif() {
     this.motif = this.mode === 'daily' ? G.dailyMotif(this.today) : G.tideMotif(this.tideIdx, this.motifIdx);
     this.trace = G.motifTrace(this.motif);
+    this.song = songOf(this.motif);
     this.attempts = 0;
     this.updateSide();
     this.enterCall();
@@ -845,6 +896,13 @@ class Cymora {
     return best;
   }
 
+  /** Change la famille de figures (arrondies ou non) ; elles se recalculent au fil des images. */
+  setRound(r) {
+    if (r === this.round) return;
+    this.round = r;
+    this.fields = new Map();
+  }
+
   /** Une onde part du centre et traverse la plaque. */
   pulse(strength) {
     this.pulses = [...(this.pulses ?? []).filter((p) => this.clock - p.at < PULSE), { at: this.clock, k: strength }];
@@ -852,6 +910,7 @@ class Cymora {
 
   /** Prépare toutes les figures en tranches, sans geler la page. */
   async prepare(onProgress) {
+    this.setRound(this.progress.tide >= 2 ? ROUND : 0);
     for (let i = 0; i < MODES.length; i++) {
       this.field(i);
       onProgress((i + 1) / MODES.length);
@@ -862,7 +921,7 @@ class Cymora {
   field(i) {
     let f = this.fields.get(i);
     if (!f) {
-      f = buildField(MODES[i]);
+      f = buildField(MODES[i], undefined, this.round);
       this.fields.set(i, f);
     }
     return f;
@@ -1018,25 +1077,47 @@ class Cymora {
       g.restore();
     };
 
-    if ((this.mode === 'tide' || this.mode === 'daily') && this.trace) {
+    if ((this.mode === 'tide' || this.mode === 'daily') && this.song) {
       const guide = this.helping ? 'always' : this.guide;
+      const { points, notes } = this.song;
       if (this.phase === 'call') {
+        // Elle chante : la courbe se déroule, chaque note éclot en perle.
         const time = (this.clock - this.phaseAt) / this.tempo;
         let upto = 0;
-        while (upto < this.trace.length && this.trace[upto].at <= time) upto++;
-        const alpha = { always: 0.85, call: 0.8, glimpse: 0.22, none: 0 }[guide];
-        line(this.trace, inks.guide, 2.4, alpha, upto, null, true);
-        if (upto && upto < this.trace.length && guide !== 'none') bead(this.trace[upto - 1], inks.guide, 4.5, 0.9);
+        while (upto < points.length && points[upto].at <= time) upto++;
+        const alpha = { always: 0.9, call: 0.85, glimpse: 0.3, none: 0 }[guide];
+        this.drawSong(g, X, Y, d, points, upto, inks.guide, alpha);
+        for (const n of notes) {
+          const age = time - n.at;
+          if (age < 0 || alpha === 0) continue;
+          const bloom = Math.min(1, age / 0.35);
+          this.orb(g, X(n), Y(n), (4 + n.dur * 5) * d * (0.5 + 0.5 * bloom), inks.guide, alpha * (0.55 + 0.45 * Math.max(0, 1 - age / n.dur)));
+        }
       } else if (this.phase === 'turn') {
-        let alpha = { always: 0.32, call: 0.42, glimpse: 0, none: 0 }[guide];
-        if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.6, 0, 1);
-        line(this.trace, inks.guide, 1.6, alpha, this.trace.length, [2, 7]);
-        // Le point de départ reste visible tant qu'on n'a pas commencé : où poser le doigt.
-        if (this.touchedAt == null && guide !== 'none') bead(this.trace[0], inks.guide, 5 + Math.sin(this.clock * 3) * 1.2, guide === 'glimpse' ? 0.35 : 0.6);
+        // À toi : le chant reste en filigrane (selon la marée), la première perle respire.
+        let alpha = { always: 0.42, call: 0.5, glimpse: 0, none: 0 }[guide];
+        if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
+        this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha * 0.6);
+        const dots = guide === 'glimpse' ? 0.22 : alpha;
+        for (const n of notes) if (dots > 0.01) this.orb(g, X(n), Y(n), (3 + n.dur * 4) * d, inks.guide, dots * 0.7);
+        if (this.touchedAt == null && guide !== 'none') {
+          const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.4);
+          const start = points[0];
+          this.orb(g, X(start), Y(start), (6 + breath * 3) * d, inks.guide, guide === 'glimpse' ? 0.45 : 0.85);
+          g.save();
+          g.strokeStyle = inks.guide;
+          g.lineWidth = d;
+          g.globalAlpha = (1 - breath) * 0.4;
+          g.beginPath();
+          g.arc(X(start), Y(start), (10 + breath * 14) * d, 0, TAU);
+          g.stroke();
+          g.restore();
+        }
       } else if (this.phase === 'echo' && this.result.score >= G.PASS) {
         const since = this.clock - this.phaseAt;
         const fade = clamp(1 - (since - 2.6) / 1.5, 0, 1);
-        line(this.trace, inks.guide, 2.6, 0.8 * fade);
+        this.drawSong(g, X, Y, d, points, points.length, inks.guide, 0.85 * fade);
+        for (const n of notes) this.orb(g, X(n), Y(n), (4 + n.dur * 5) * d, inks.guide, 0.8 * fade);
       }
     }
 
@@ -1103,34 +1184,70 @@ class Cymora {
     }
   }
 
-  /** Le bord de la plaque : un anneau de verre gradué, plus vif quand la matière vibre ; et les ondes de résonance. */
+  /** La courbe du chant : un voile large et doux, puis un fil lumineux. Jamais de pointillés. */
+  drawSong(g, X, Y, d, points, upto, color, alpha) {
+    if (upto < 2 || alpha <= 0.01) return;
+    const path = () => {
+      g.beginPath();
+      g.moveTo(X(points[0]), Y(points[0]));
+      for (let i = 1; i < upto; i++) g.lineTo(X(points[i]), Y(points[i]));
+    };
+    g.save();
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = color;
+    for (const [w, a] of [[16, 0.06], [7, 0.14]]) {
+      g.lineWidth = w * d;
+      g.globalAlpha = alpha * a;
+      path();
+      g.stroke();
+    }
+    g.lineWidth = 1.4 * d;
+    g.globalAlpha = alpha * 0.85;
+    g.shadowColor = color;
+    g.shadowBlur = 12 * d;
+    path();
+    g.stroke();
+    g.restore();
+  }
+
+  /** Une perle de lumière : cœur blanc, halo coloré qui se dissout. */
+  orb(g, x, y, r, color, alpha) {
+    if (alpha <= 0.01) return;
+    const halo = g.createRadialGradient(x, y, 0, x, y, r * 3);
+    halo.addColorStop(0, 'rgba(255,255,255,1)');
+    halo.addColorStop(0.22, rgba(color, 0.9));
+    halo.addColorStop(0.5, rgba(color, 0.22));
+    halo.addColorStop(1, rgba(color, 0));
+    g.save();
+    g.globalAlpha = alpha;
+    g.fillStyle = halo;
+    g.beginPath();
+    g.arc(x, y, r * 3, 0, TAU);
+    g.fill();
+    g.restore();
+  }
+
+  /** Le bord de la plaque : un halo diffus, plus vif quand la matière vibre ; et les ondes de résonance. */
   drawPlate(g, ox, oy, size, d, inks) {
     const cx = ox + size / 2;
     const cy = oy + size / 2;
     const R = size * 0.47;
     const e = clamp(this.energy, 0, 1);
     g.save();
-    const ring = g.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
-    ring.addColorStop(0, inks.guide);
-    ring.addColorStop(1, CHORUS_INK);
-    g.strokeStyle = ring;
-    g.lineWidth = d;
-    g.globalAlpha = 0.12 + e * 0.18;
+    // Pas de trait : une lueur qui naît et meurt de part et d'autre du bord.
+    const inner = R * 0.9;
+    const outer = R * 1.1;
+    const glow = g.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    glow.addColorStop(0, rgba(CHORUS_INK, 0));
+    glow.addColorStop(0.5, rgba(CHORUS_INK, 0.07 + e * 0.1));
+    glow.addColorStop(0.56, rgba(inks.guide, 0.04 + e * 0.07));
+    glow.addColorStop(1, rgba(inks.guide, 0));
+    g.fillStyle = glow;
     g.beginPath();
-    g.arc(cx, cy, R + 5 * d, 0, TAU);
-    g.stroke();
-    // Graduations : elles tournent très lentement, comme une plaque posée sur un plateau.
-    g.globalAlpha = 0.07 + e * 0.13;
-    g.beginPath();
-    const turn = reducedMotion ? 0 : this.clock * 0.012;
-    for (let i = 0; i < 96; i++) {
-      const a = (i / 96) * TAU + turn;
-      const r1 = R + 9 * d;
-      const r2 = R + (i % 8 === 0 ? 16 : 12) * d;
-      g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-      g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
-    }
-    g.stroke();
+    g.arc(cx, cy, outer, 0, TAU);
+    g.arc(cx, cy, inner, 0, TAU, true);
+    g.fill();
     for (const p of this.pulses ?? []) {
       const age = (this.clock - p.at) / PULSE;
       if (age >= 1) continue;

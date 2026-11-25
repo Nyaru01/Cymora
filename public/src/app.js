@@ -18,6 +18,8 @@ const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SEEN = 'cymora.prologue.v1';
+const SETTINGS = 'cymora.settings.v1';
+const VERSION = '1.4.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -104,8 +106,36 @@ async function watchUpdates() {
 }
 
 /** Vibration (téléphone) : de courtes impulsions, jamais insistantes. */
+/** Réglages du joueur, gardés sur l'appareil. */
+const settings = { sound: true, haptics: true, guide: false, calm: false };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS) ?? '{}')); } catch { /* réglages par défaut */ }
+const saveSettings = () => { try { localStorage.setItem(SETTINGS, JSON.stringify(settings)); } catch { /* le temps de la séance */ } };
+
+const CAN_VIBRATE = typeof navigator.vibrate === 'function';
+// Safari n'a pas navigator.vibrate ; depuis iOS 18, basculer un interrupteur natif donne un « tic » haptique.
+const IOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let iosSwitch = null;
+function iosTick() {
+  if (!iosSwitch) {
+    iosSwitch = document.createElement('label');
+    iosSwitch.className = 'haptic-tap';
+    iosSwitch.setAttribute('aria-hidden', 'true');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.tabIndex = -1;
+    input.setAttribute('switch', '');
+    iosSwitch.append(input);
+    document.body.append(iosSwitch);
+  }
+  iosSwitch.click();
+}
+/** Vibration : des impulsions assez longues pour que tous les moteurs les rendent (moins de ~20 ms passe inaperçu). */
 function haptic(pattern) {
-  try { navigator.vibrate?.(pattern); } catch { /* pas de vibreur */ }
+  if (!settings.haptics) return;
+  try {
+    if (CAN_VIBRATE) navigator.vibrate(pattern);
+    else if (IOS) iosTick();
+  } catch { /* pas de vibreur */ }
 }
 
 /**
@@ -278,12 +308,12 @@ class Cymora {
 
   /** Confirmation sensible : vibration sur téléphone, frisson de la plaque à l'écran. */
   feel(kind) {
-    if (kind === 'resonance') haptic([14, 60, 26]);
-    else if (kind === 'close') haptic(18);
-    else if (kind === 'near') haptic([10, 50, 10]);
-    else if (kind === 'far') haptic([8, 70, 8]);
-    else if (kind === 'done') haptic([20, 70, 20, 70, 40]);
-    else if (kind === 'touch') haptic(6);
+    if (kind === 'resonance') haptic([40, 70, 70]);
+    else if (kind === 'close') haptic(45);
+    else if (kind === 'near') haptic([25, 60, 25]);
+    else if (kind === 'far') haptic([22, 90, 22]);
+    else if (kind === 'done') haptic([50, 80, 50, 80, 110]);
+    else if (kind === 'touch') haptic(20);
     if (kind === 'touch') return;
     const scene = $('#scene');
     scene.classList.remove('is-yes', 'is-no');
@@ -298,7 +328,7 @@ class Cymora {
     const alive = () => { this.lastInput = performance.now(); };
     for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, alive, { passive: true });
     const go = async (withSound, then) => {
-      if (withSound) await this.audio.enable();
+      if (withSound && settings.sound) await this.audio.enable();
       if (this.audio.enabled) this.audio.drone(true);
       this.syncSound();
       document.body.dataset.state = 'play';
@@ -312,6 +342,7 @@ class Cymora {
 
   bindBar() {
     $('#sound').addEventListener('click', () => this.toggleSound());
+    this.bindMenu();
     $('#where').addEventListener('click', () => this.openMap());
     const map = $('#map');
     $('#map-daily').addEventListener('click', () => { map.close(); this.startDaily(); });
@@ -326,6 +357,71 @@ class Cymora {
       this.toast(t('t.reset'), t('t.undo'), () => { this.progress = before; this.save(); this.syncScore(); this.relabel(); });
       this.startTide(0);
     });
+  }
+
+  // ---------------------------------------------------------------- menu et réglages
+
+  bindMenu() {
+    const menu = $('#menu');
+    $('#menu-open').addEventListener('click', () => this.openMenu());
+    $('#menu-home').addEventListener('click', () => { menu.close(); this.goHome(); });
+    $('#menu-journey').addEventListener('click', () => { menu.close(); this.openMap(); });
+    $('#set-sound').addEventListener('click', async () => {
+      settings.sound = !settings.sound;
+      saveSettings();
+      this.syncSettings();
+      if (document.body.dataset.state === 'play') {
+        if (!settings.sound && this.audio.enabled) { this.audio.drone(false); this.audio.disable(); }
+        else if (settings.sound && !this.audio.enabled && await this.audio.enable()) this.audio.drone(true);
+      }
+      this.syncSound();
+    });
+    $('#set-haptics').addEventListener('click', () => {
+      settings.haptics = !settings.haptics;
+      saveSettings();
+      this.syncSettings();
+      haptic(45); // pour sentir tout de suite ce que ça donne
+    });
+    for (const key of ['guide', 'calm']) {
+      $(`#set-${key}`).addEventListener('click', () => { settings[key] = !settings[key]; saveSettings(); this.syncSettings(); });
+    }
+    i18n.onChange(() => this.syncSettings());
+    this.syncSettings();
+  }
+
+  openMenu() {
+    $('#menu-home').hidden = document.body.dataset.state !== 'play';
+    this.syncSettings();
+    $('#menu').showModal();
+  }
+
+  syncSettings() {
+    for (const key of ['sound', 'haptics', 'guide', 'calm']) $(`#set-${key}`).setAttribute('aria-checked', String(settings[key]));
+    const hapticsOk = CAN_VIBRATE || IOS;
+    $('#set-haptics').disabled = !hapticsOk;
+    $('#set-haptics-line').textContent = t(!hapticsOk ? 'set.hapticsNone' : CAN_VIBRATE ? 'set.hapticsLine' : 'set.hapticsIos');
+    $('#menu-version').textContent = t('menu.version', { v: VERSION });
+    document.body.classList.toggle('is-calm', settings.calm);
+  }
+
+  /** Retour au seuil : la partie s'arrête là où elle en est (la progression est déjà sauvegardée). */
+  goHome() {
+    this.touch = null;
+    this.stroke = null;
+    this.play = null;
+    this.result = null;
+    this.mode = 'menu';
+    this.phase = 'idle';
+    this.hideCard();
+    clearTimeout(this.whisperTimer);
+    $('#whisper').classList.remove('is-on');
+    if (this.audio.enabled) this.audio.drone(false);
+    this.setTone('see');
+    this.setRound(0);
+    this.save();
+    this.relabel();
+    this.lastInput = performance.now();
+    document.body.dataset.state = 'threshold';
   }
 
   openMap() {
@@ -351,7 +447,7 @@ class Cymora {
       li.append(b);
       list.append(li);
     });
-    const done = (this.progress.days[this.today] ?? 0) >= G.PASS;
+    const done = (this.progress.days[this.today] ?? 0) >= G.DAILY_PASS;
     const streak = G.liveStreak(this.progress, this.today);
     $('#map-daily-state').textContent = `${t(done ? 'map.dailyDone' : 'map.dailyTodo')}${streak ? ` · ${t('streak', { n: streak })}` : ''}`;
     $('#map').showModal();
@@ -512,7 +608,7 @@ class Cymora {
     this.setTone('daily');
     this.setRound(0);
     this.relabel();
-    const done = (this.progress.days[this.today] ?? 0) >= G.PASS;
+    const done = (this.progress.days[this.today] ?? 0) >= G.DAILY_PASS;
     this.showCard(t('card.daily'), done ? t('card.dailyDone') : t('card.dailyLine'));
     this.enterInterlude(3.6, () => this.newMotif());
   }
@@ -552,7 +648,13 @@ class Cymora {
     this.enterCall();
   }
 
+  /** Le seuil pour avancer : 85 % dans l'aventure, 90 % pour la résonance du jour. */
+  get passMark() {
+    return this.mode === 'daily' ? G.DAILY_PASS : G.PASS;
+  }
+
   get guide() {
+    if (settings.guide) return 'always';
     if (this.mode === 'daily') return 'call';
     return G.TIDES[this.tideIdx]?.guide ?? 'always';
   }
@@ -640,7 +742,7 @@ class Cymora {
 
   judge(points) {
     const before = G.resonanceScore(this.progress);
-    const r = G.attune(this.motif, points);
+    const r = G.attune(this.motif, points, this.passMark);
     if (r.verdict === 'silent') {
       this.whisper(t('w.silent'), 2200);
       return;
@@ -649,7 +751,7 @@ class Cymora {
     this.phase = 'echo';
     this.phaseAt = this.clock;
     this.nextNote = 0;
-    const pass = r.score >= G.PASS;
+    const pass = r.score >= this.passMark;
     if (this.mode === 'tide') {
       const out = G.recordTide(this.progress, this.tideIdx, this.motifIdx, r.score);
       this.progress = out.progress;
@@ -663,7 +765,7 @@ class Cymora {
     this.save();
     this.relabel();
     this.whisper(t(VERDICT[r.verdict] ?? 'w.far'), 3200);
-    if (pass) this.pulse(r.verdict === 'resonance' ? 1 : 0.6);
+    if (pass) { this.pulse(r.verdict === 'resonance' ? 1 : 0.6); this.bloom(r.verdict === 'resonance' ? 1 : 0.55); }
     this.showGain(G.resonanceScore(this.progress) - before, Math.round(r.score * 100));
     this.syncScore(true);
     this.feel(r.verdict);
@@ -788,7 +890,7 @@ class Cymora {
     const speed = Math.hypot(dx, dy);
     if (speed > 0.002) this.E.addWake(this.world, x, y, dx * 6, dy * 6, clamp(0.035 + speed * 2, 0.035, 0.08));
     // Étincelles : le doigt laisse une poussière de lumière qui retombe doucement.
-    if (!reducedMotion && speed > 0.0015 && this.sparks.length < 160) {
+    if (!reducedMotion && speed > 0.0015 && this.sparks.length < 240) {
       const a = Math.random() * Math.PI * 2;
       const v = 0.02 + Math.random() * 0.05;
       this.sparks.push({ x, y, vx: Math.cos(a) * v - dx * 2, vy: Math.sin(a) * v - dy * 2, at: this.clock, life: 0.6 + Math.random() * 0.7 });
@@ -906,7 +1008,7 @@ class Cymora {
   /** L'écho : si l'accord est juste, la matière rejoue le chant et se cristallise ; sinon elle reprend son souffle. */
   stepEcho() {
     const since = this.clock - this.phaseAt;
-    const pass = this.result.score >= G.PASS;
+    const pass = this.result.score >= this.passMark;
     if (!pass) {
       if (since > 1.6) this.afterEcho();
       return { freq: 0, energy: 0.12 };
@@ -970,7 +1072,23 @@ class Cymora {
   }
 
   /** Une onde part du centre et traverse la plaque. */
+  /** Réussite : un éclair doux au cœur de la plaque et une gerbe de lumière qui s'envole vers la nuit. */
+  bloom(k) {
+    if (settings.calm) k *= 0.4;
+    this.flash = { at: this.clock, k };
+    if (reducedMotion) return;
+    const n = Math.round(70 * k);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + Math.random() * 0.3;
+      const r = 0.12 + Math.random() * 0.3;
+      const v = 0.08 + Math.random() * 0.22;
+      this.sparks.push({ x: 0.5 + Math.cos(a) * r, y: 0.5 + Math.sin(a) * r, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+        at: this.clock, life: 1.1 + Math.random() * 1.3, burst: true, size: 1.4 + Math.random() * 1.8 });
+    }
+  }
+
   pulse(strength) {
+    if (settings.calm) strength *= 0.4;
     this.pulses = [...(this.pulses ?? []).filter((p) => this.clock - p.at < PULSE), { at: this.clock, k: strength }];
   }
 
@@ -1072,6 +1190,7 @@ class Cymora {
     const d = this.dpr;
     g.clearRect(0, 0, this.inkCv.width, this.inkCv.height);
     const inks = this.inks ?? INKS.free;
+    this.drawMotes(g, d, inks);
     this.drawPlate(g, ox, oy, size, d, inks);
     const X = (p) => ox + p.x * size;
     const Y = (p) => oy + p.y * size;
@@ -1183,7 +1302,7 @@ class Cymora {
           g.stroke();
           g.restore();
         }
-      } else if (this.phase === 'echo' && this.result.score >= G.PASS) {
+      } else if (this.phase === 'echo' && this.result.score >= this.passMark) {
         const since = this.clock - this.phaseAt;
         const fade = clamp(1 - (since - 2.6) / 1.5, 0, 1);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, 0.85 * fade);
@@ -1235,6 +1354,19 @@ class Cymora {
       for (const sp of this.sparks) {
         const age = (this.clock - sp.at) / sp.life;
         const dt = this.clock - sp.at;
+        if (sp.burst) {
+          const go = (1 - Math.exp(-dt * 1.6)) / 1.6; // elle file puis ralentit
+          const x = ox + (sp.x + sp.vx * go) * size;
+          const y = oy + (sp.y + sp.vy * go) * size;
+          const twinkle = 0.6 + 0.4 * Math.sin(dt * 18 + sp.size * 9);
+          g.globalAlpha = (1 - age) ** 1.5 * twinkle;
+          g.fillStyle = inks.guide;
+          g.beginPath();
+          g.arc(x, y, sp.size * (1 - age * 0.5) * d, 0, TAU);
+          g.fill();
+          g.fillStyle = inks.stroke;
+          continue;
+        }
         const x = sp.x + sp.vx * dt;
         const y = sp.y + sp.vy * dt + 0.02 * dt * dt;
         g.globalAlpha = (1 - age) * 0.9;
@@ -1305,6 +1437,43 @@ class Cymora {
     g.restore();
   }
 
+  /**
+   * Poussière de nuit : des grains très lointains qui montent lentement et scintillent sur tout l'écran.
+   * Ils s'éclairent quand la matière vibre, et la plaque les attire un peu : la scène respire au-delà du cercle.
+   */
+  drawMotes(g, d, inks) {
+    const W = this.inkCv.width;
+    const H = this.inkCv.height;
+    if (!this.motes) {
+      const r = G.rng(11);
+      this.motes = Array.from({ length: 110 }, () => ({ x: r(), y: r(), z: 0.25 + r() * 0.75, ph: r() * TAU, c: r() < 0.35 }));
+    }
+    const e = clamp(this.energy, 0, 1);
+    const still = reducedMotion ? 0 : 1;
+    const cx = this.rect.x + this.rect.size / 2;
+    const cy = this.rect.y + this.rect.size / 2;
+    g.save();
+    for (const m of this.motes) {
+      const t = this.clock * still;
+      let x = ((m.x + Math.sin(t * 0.07 * m.z + m.ph) * 0.02) % 1) * W;
+      let y = (((m.y - t * 0.006 * m.z) % 1 + 1) % 1) * H;
+      // La plaque attire doucement les grains proches quand elle chante.
+      const dx = cx - x;
+      const dy = cy - y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const pull = e * 0.05 * m.z * Math.min(1, (this.rect.size * 0.9) / dist);
+      x += dx * pull;
+      y += dy * pull;
+      const twinkle = 0.55 + 0.45 * Math.sin(t * (0.8 + m.z * 1.6) + m.ph * 3);
+      g.globalAlpha = (0.1 + 0.34 * m.z) * twinkle * (0.75 + e * 0.6) * (settings.calm ? 0.6 : 1);
+      g.fillStyle = m.c ? inks.stroke : inks.guide;
+      g.beginPath();
+      g.arc(x, y, (0.6 + m.z * 1.4) * d, 0, TAU);
+      g.fill();
+    }
+    g.restore();
+  }
+
   /** Le bord de la plaque : un halo diffus, plus vif quand la matière vibre ; et les ondes de résonance. */
   drawPlate(g, ox, oy, size, d, inks) {
     const cx = ox + size / 2;
@@ -1329,6 +1498,21 @@ class Cymora {
     g.arc(cx, cy, outer, 0, TAU);
     g.arc(cx, cy, inner, 0, TAU, true);
     g.fill();
+    if (this.flash) {
+      const age = (this.clock - this.flash.at) / 1.1;
+      if (age >= 1) this.flash = null;
+      else {
+        const k = (1 - age) ** 2 * this.flash.k;
+        const f = g.createRadialGradient(cx, cy, 0, cx, cy, R * (0.6 + age * 0.9));
+        f.addColorStop(0, `rgba(255,255,255,${0.32 * k})`);
+        f.addColorStop(0.35, rgba(inks.guide, 0.22 * k));
+        f.addColorStop(1, rgba(inks.guide, 0));
+        g.fillStyle = f;
+        g.beginPath();
+        g.arc(cx, cy, R * (0.6 + age * 0.9), 0, TAU);
+        g.fill();
+      }
+    }
     for (const p of this.pulses ?? []) {
       const age = (this.clock - p.at) / PULSE;
       if (age >= 1) continue;
@@ -1351,6 +1535,8 @@ class Cymora {
     if (document.body.dataset.state !== 'play') return;
     if (this.audio.enabled) { this.audio.drone(false); this.audio.disable(); }
     else if (await this.audio.enable()) this.audio.drone(true);
+    settings.sound = this.audio.enabled;
+    saveSettings();
     this.syncSound();
   }
 

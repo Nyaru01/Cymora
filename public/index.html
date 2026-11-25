@@ -47,7 +47,7 @@
     <div class="bar__end">
       <span class="score" id="score" role="status"><svg class="score__star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.9h7.2l-5.8 4.2 2.2 6.9L12 16.3l-5.8 4.2 2.2-6.9-5.8-4.2h7.2z" fill="currentColor"/></svg><span id="score-value">0</span></span>
       <button type="button" class="pill pill--icon" id="sound" aria-pressed="false"><svg class="sound__on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="sound__off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-      <div id="lang"></div>
+      <button type="button" class="pill pill--icon" id="menu-open" aria-haspopup="dialog" data-i18n-attr="aria-label:menu.title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
     </div>
   </header>
 
@@ -101,6 +101,23 @@
     </div>
   </div>
 
+  <dialog class="map menu" id="menu" aria-labelledby="menu-title">
+    <form method="dialog">
+      <h2 id="menu-title" data-i18n="menu.title">Menu</h2>
+      <div class="menu__go">
+        <button type="button" class="menu__item" id="menu-home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5M6.5 10v8.5h11V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="menu.home">Retour à l’accueil</span></button>
+        <button type="button" class="menu__item" id="menu-journey"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="17" r="2" fill="currentColor"/><circle cx="12" cy="9" r="2" fill="currentColor"/><circle cx="18" cy="14" r="2" fill="currentColor"/><path d="M7.4 15.6 10.6 10.4M13.6 10.2l2.9 2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span data-i18n="journey">Ton voyage</span></button>
+      </div>
+      <h3 class="menu__head" data-i18n="menu.settings">Réglages</h3>
+      <div class="menu__row"><span class="menu__label" id="set-sound-label"><b data-i18n="set.sound">Son</b><small data-i18n="set.soundLine"></small></span><button type="button" class="switch" id="set-sound" role="switch" aria-checked="true" aria-labelledby="set-sound-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row"><span class="menu__label" id="set-haptics-label"><b data-i18n="set.haptics">Vibrations</b><small id="set-haptics-line" data-i18n="set.hapticsLine"></small></span><button type="button" class="switch" id="set-haptics" role="switch" aria-checked="true" aria-labelledby="set-haptics-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row"><span class="menu__label" id="set-guide-label"><b data-i18n="set.guide">Garder le chant visible</b><small data-i18n="set.guideLine"></small></span><button type="button" class="switch" id="set-guide" role="switch" aria-checked="true" aria-labelledby="set-guide-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row"><span class="menu__label" id="set-calm-label"><b data-i18n="set.calm">Effets apaisés</b><small data-i18n="set.calmLine"></small></span><button type="button" class="switch" id="set-calm" role="switch" aria-checked="true" aria-labelledby="set-calm-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row"><span class="menu__label"><b data-i18n="set.lang">Langue</b></span><div id="lang"></div></div>
+      <p class="menu__version" id="menu-version"></p>
+      <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
+    </form>
+  </dialog>
   <dialog class="map" id="map" aria-labelledby="map-title">
     <form method="dialog">
       <h2 id="map-title" data-i18n="map.title">Ton voyage</h2>

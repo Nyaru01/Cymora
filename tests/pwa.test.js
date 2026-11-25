@@ -7,6 +7,8 @@ test('le service worker porte la version de package.json (sinon pas de mise à j
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const sw = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
   assert.equal(/const VERSION = '([^']+)'/.exec(sw)?.[1], pkg.version);
+  const app = await readFile(new URL('../public/src/app.js', import.meta.url), 'utf8');
+  assert.equal(/const VERSION = '([^']+)'/.exec(app)?.[1], pkg.version, 'la version affichée dans le menu');
   // Une version récente attend l'accord du joueur ; seules les toutes premières (sans pop-up) sont remplacées d'office.
   assert.match(sw, /event\.data === 'skip'\) self\.skipWaiting\(\)/);
   assert.equal(sw.split('self.skipWaiting()').length - 1, 2, 'deux appels seulement : sur accord, et pour les toutes premières versions');

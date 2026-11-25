@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEGREES, PASS, RESONANCE, MOTIFS_PER_TIDE, TIDES, attune, dailyMotif, dayBefore, degreeFreq, degreeY, freshProgress,
+  DAILY_PASS, DEGREES, PASS, RESONANCE, MOTIFS_PER_TIDE, TIDES, attune, dailyMotif, dayBefore, degreeFreq, degreeY, freshProgress,
   liveStreak, motif, motifDegreeAt, motifTrace, readProgress, recordDay, recordTide, rng, tideMotif, yDegree,
 } from '../public/src/game.js';
 
@@ -85,6 +85,23 @@ test('un contour juste mais transposé d’un degré approche, sans passer (90 %
     const r = attune(m, follow(m, { offset: 1 }));
     assert.ok(r.score < PASS && r.verdict === 'near', `${r.score}`);
   }
+});
+
+test('l’aventure est plus clémente que la résonance du jour', () => {
+  assert.ok(PASS < DAILY_PASS && DAILY_PASS < RESONANCE);
+  const m = tideMotif(1, 0);
+  for (let jitter = 0; jitter <= 1.6; jitter += 0.05) {
+    const g = follow(m, { jitter, seed: 3 });
+    const tide = attune(m, g);
+    const day = attune(m, g, DAILY_PASS);
+    assert.equal(tide.score, day.score);
+    if (tide.score >= PASS && tide.score < DAILY_PASS) {
+      assert.equal(tide.verdict, 'close');
+      assert.equal(day.verdict, 'near');
+      return;
+    }
+  }
+  assert.fail('aucun tracé entre les deux seuils');
 });
 
 test('une ligne plate, un gribouillis ou un contour inversé ne passent pas', () => {

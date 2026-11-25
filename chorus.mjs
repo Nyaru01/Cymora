@@ -7,7 +7,7 @@
 // Avec DATABASE_URL (Railway Postgres), les traces vivent dans la base ; sans elle (poste local, tests),
 // dans la mémoire du processus.
 
-import { PASS, RESONANCE, attune, chorusGesture, dailyMotif, validTrace } from './public/src/game.js';
+import { DAILY_PASS as PASS, RESONANCE, attune, chorusGesture, dailyMotif, validTrace } from './public/src/game.js';
 
 export const RETENTION_DAYS = 45;
 const SHOWN = 24; // traces renvoyées au plus
@@ -23,7 +23,7 @@ export function acceptableDay(day, now = new Date()) {
 /** Mesure de nouveau la trace contre le chant du jour : le serveur ne croit pas le score du client. */
 export function judgeTrace(day, trace) {
   if (!acceptableDay(day) || !validTrace(trace)) return null;
-  return attune(dailyMotif(day), chorusGesture(trace));
+  return attune(dailyMotif(day), chorusGesture(trace), PASS);
 }
 
 export async function createChorus({ url = process.env.DATABASE_URL, log = console } = {}) {

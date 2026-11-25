@@ -9,7 +9,8 @@ export const DEGREES = STEPS.length; // 11
 const BASE_MIDI = 57; // La3, 220 Hz
 const MARGIN = 0.1; // la gamme occupe le champ sans toucher les bords
 
-export const PASS = 0.9; // « à l'unisson » : on passe au chant suivant (90 % au moins)
+export const PASS = 0.85; // aventure : « à l'unisson », on passe au chant suivant (85 % au moins)
+export const DAILY_PASS = 0.9; // résonance du jour : plus exigeante, c'est elle qui fait entrer dans le chœur
 export const RESONANCE = 0.95; // « en résonance » : la matière se cristallise
 export const NEAR = 0.7; // « presque » : encourageant, mais on rechante
 export const MOTIFS_PER_TIDE = 5;
@@ -194,7 +195,7 @@ function dtw(a, b, cap = 3) {
  * @param {{t:number, y:number}[]} gesture points du geste (temps en secondes, y dans [0,1])
  * @returns {{score:number, verdict:'resonance'|'close'|'near'|'far'|'silent', distance:number}}
  */
-export function attune(m, gesture) {
+export function attune(m, gesture, pass = PASS) {
   const pts = (gesture ?? []).filter((p) => p && Number.isFinite(p.t) && Number.isFinite(p.y));
   if (pts.length < 4 || pts.at(-1).t - pts[0].t < 0.25) return { score: 0, verdict: 'silent', distance: Infinity };
   const N = 48;
@@ -227,7 +228,7 @@ export function attune(m, gesture) {
   const answerRange = sorted[Math.floor(sorted.length * 0.9)] - sorted[Math.floor(sorted.length * 0.1)];
   distance += Math.max(0, targetRange * 0.6 - answerRange) * 0.45;
   const score = round(clamp(1 - distance / 1.5, 0, 1), 3);
-  const verdict = score >= RESONANCE ? 'resonance' : score >= PASS ? 'close' : score >= NEAR ? 'near' : 'far';
+  const verdict = score >= RESONANCE ? 'resonance' : score >= pass ? 'close' : score >= NEAR ? 'near' : 'far';
   return { score, verdict, distance: round(distance, 3) };
 }
 
@@ -326,7 +327,7 @@ export function recordDay(progress, date, score) {
   const p = structuredClone(progress);
   const before = p.days[date] ?? 0;
   p.days[date] = Math.max(before, round(score, 3));
-  if (score >= PASS && before < PASS) {
+  if (score >= DAILY_PASS && before < DAILY_PASS) {
     p.streak = p.lastDay === dayBefore(date) ? p.streak + 1 : 1;
     p.lastDay = date;
   }

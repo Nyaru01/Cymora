@@ -19,7 +19,7 @@ const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
-const VERSION = '1.6.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.6.1'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -217,13 +217,15 @@ function introOver() {
 function startIntro() {
   const v = $('#splash-video');
   const fallback = () => {
+    if (document.body.classList.contains('has-intro') && !v.error) return; // elle joue déjà : on la laisse
+    v.pause();
     document.body.classList.remove('has-intro');
     document.body.classList.add('no-intro');
     introOver();
   };
   if (reducedMotion || !v) { v?.remove(); fallback(); return; }
   v.addEventListener('error', fallback, { once: true });
-  v.addEventListener('playing', () => { document.body.classList.add('has-intro'); glowLoop(v); }, { once: true });
+  v.addEventListener('playing', () => { if (document.body.classList.contains('no-intro')) return; document.body.classList.add('has-intro'); glowLoop(v); }, { once: true });
   v.addEventListener('ended', introOver, { once: true });
   const sound = $('#splash-sound');
   sound.addEventListener('click', () => { v.muted = false; sound.hidden = true; v.play().catch(() => {}); });
@@ -234,7 +236,7 @@ function startIntro() {
     v.muted = true;
     v.play().then(() => { sound.hidden = false; }, fallback);
   });
-  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 3000);
+  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 4000);
   setTimeout(introOver, 14000); // filet de sécurité si « ended » ne vient jamais
 }
 /** Écran large : la vidéo (portrait) est prolongée sur les côtés par son propre reflet, flou. */

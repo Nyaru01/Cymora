@@ -94,7 +94,7 @@ body[data-state="threshold"] .scene__matter, body[data-state="loading"] .scene__
   font: italic 22px/1.35 var(--serif);
   letter-spacing: 0.01em;
   color: var(--soft);
-  text-shadow: 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent);
+  text-shadow: 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent), 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 0, 0, 0.8);
   opacity: 0;
   filter: blur(4px);
   translate: 0 8px;
@@ -103,6 +103,12 @@ body[data-state="threshold"] .scene__matter, body[data-state="loading"] .scene__
 }
 .whisper.is-on { opacity: 0.9; filter: none; translate: 0 0; }
 
+/* Les cartes se lisent sur une matière parfois très lumineuse : un voile sombre derrière, et la matière s'efface. */
+.card::before {
+  content: ""; position: absolute; inset: -60px -44px; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(2, 4, 12, 0.82), rgba(2, 4, 12, 0.5) 55%, transparent);
+}
+body[data-state="play"] .scene:has(.card.is-on) .scene__matter { filter: var(--matter) brightness(0.42) saturate(0.85); transition: filter 1.2s var(--slow); }
 .card {
   position: absolute;
   left: var(--field-cx);
@@ -116,10 +122,10 @@ body[data-state="threshold"] .scene__matter, body[data-state="loading"] .scene__
 }
 .card { filter: blur(8px); translate: 0 10px; transition: opacity 1.6s var(--slow), filter 1.6s var(--slow), translate 1.6s var(--slow); }
 .card.is-on { opacity: 1; filter: none; translate: 0 0; }
-.card__title { margin: 0 0 10px; font: italic 400 clamp(30px, 5vw, 52px)/1.1 var(--serif); color: var(--accent); text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 40%, transparent); }
-.card__line { margin: 0; font: italic clamp(17px, 2vw, 22px)/1.45 var(--serif); color: var(--dim); }
+.card__title { margin: 0 0 10px; font: italic 400 clamp(30px, 5vw, 52px)/1.1 var(--serif); color: var(--accent); text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 40%, transparent), 0 2px 10px rgba(0, 0, 0, 0.8); }
+.card__line { margin: 0; font: italic clamp(17px, 2vw, 22px)/1.45 var(--serif); color: var(--soft); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 18px rgba(0, 0, 0, 0.85); }
 .card__line:empty, .card__hint:empty { display: none; }
-.card__hint { margin: 14px auto 0; max-width: 34ch; font: 13.5px/1.5 var(--sans); color: var(--faint); letter-spacing: 0.01em; }
+.card__hint { margin: 14px auto 0; max-width: 34ch; font: 13.5px/1.5 var(--sans); color: var(--dim); letter-spacing: 0.01em; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.85); }
 
 .fatal {
   position: absolute;
@@ -373,9 +379,9 @@ body[data-state="play"] .scene.is-listening .scene__matter { filter: var(--matte
   justify-items: center;
   gap: 18px;
   padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-  overflow-y: auto;
+  overflow: hidden;
   text-align: center;
-  background: radial-gradient(ellipse 70% 60% at 50% 42%, #0b1d3a 0%, #03040b 75%);
+  background: #000; /* noir pur tant que la vidéo n'a pas commencé : rien ne s'affiche avant elle */
   transition: opacity 1.4s var(--slow), visibility 0s linear 1.4s;
 }
 body:not([data-state="loading"]) .splash { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(1.04); filter: blur(8px); }
@@ -383,10 +389,13 @@ body:not([data-state="loading"]) .splash { opacity: 0; visibility: hidden; point
 /* Intro vidéo : la vidéo seule, plein écran. Sur écran large, son reflet flou remplit les côtés. */
 .splash__video, .splash__glow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .splash__video { object-fit: cover; z-index: -1; opacity: 0; transition: opacity 1.2s var(--slow); }
-.splash__glow { z-index: -2; display: none; filter: blur(28px) brightness(0.55) saturate(1.25); transform: scale(1.15); }
-body.has-intro .splash__video { opacity: 1; }
-body.has-intro .splash { background: #000; place-content: end center; }
-body.has-intro .splash__title, body.has-intro .splash__bar, body.has-intro .splash__logo { display: none; }
+.splash__video { transition: opacity 1.6s var(--slow); }
+.splash__glow { z-index: -2; display: none; filter: blur(34px) brightness(0.4) saturate(1.2); transform: scale(1.2); opacity: 0; transition: opacity 2.2s var(--slow); }
+body.has-intro .splash__video, body.has-intro .splash__glow { opacity: 1; }
+body.has-intro .splash { place-content: end center; }
+/* Le logo et la barre ne servent que si la vidéo ne peut pas se lire. */
+body:not(.no-intro) .splash__title, body:not(.no-intro) .splash__bar, body:not(.no-intro) .splash__logo { display: none; }
+body.no-intro .splash { background: radial-gradient(ellipse 70% 60% at 50% 42%, #0b1d3a 0%, #03040b 75%); }
 body.no-intro .splash__video, body.no-intro .splash__glow, body.no-intro .splash__sound, body.no-intro .splash__skip { display: none; }
 .splash__sound { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); display: inline-flex; align-items: center; gap: 8px; animation: veilIn 0.8s ease both; }
 .splash__sound svg { width: 18px; height: 18px; color: var(--accent); }
@@ -396,8 +405,8 @@ body.no-intro .splash__video, body.no-intro .splash__glow, body.no-intro .splash
   body.has-intro .splash__glow { display: block; }
   .splash__video {
     object-fit: contain;
-    -webkit-mask-image: linear-gradient(90deg, transparent calc(50% - 27.5vh), #000 calc(50% - 16vh), #000 calc(50% + 16vh), transparent calc(50% + 27.5vh));
-    mask-image: linear-gradient(90deg, transparent calc(50% - 27.5vh), #000 calc(50% - 16vh), #000 calc(50% + 16vh), transparent calc(50% + 27.5vh));
+    -webkit-mask-image: linear-gradient(90deg, transparent calc(50% - 28vh), rgba(0,0,0,0.35) calc(50% - 20vh), #000 calc(50% - 7vh), #000 calc(50% + 7vh), rgba(0,0,0,0.35) calc(50% + 20vh), transparent calc(50% + 28vh));
+    mask-image: linear-gradient(90deg, transparent calc(50% - 28vh), rgba(0,0,0,0.35) calc(50% - 20vh), #000 calc(50% - 7vh), #000 calc(50% + 7vh), rgba(0,0,0,0.35) calc(50% + 20vh), transparent calc(50% + 28vh));
   }
 }
 .splash__logo {

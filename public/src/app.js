@@ -22,7 +22,7 @@ const SETTINGS = 'cymora.settings.v1';
 const HOLD_SEEN = 'cymora.seen.hold'; // la carte « notes tenues » n'apparaît qu'une fois
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.11.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.12.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -38,6 +38,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const stored = (key) => localStorage.getItem(key) ?? localStorage.getItem(LEGACY[key]);
 const seen = (key) => { try { return Boolean(localStorage.getItem(key)); } catch { return false; } };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FINE = matchMedia('(pointer: fine)').matches; // souris (PC) : les consignes parlent du clic, pas du doigt
 
 /** Couleurs de chaque moment : encre du guide, encre du geste. Le reste est en CSS. */
 const INKS = {
@@ -783,7 +784,7 @@ class Cymora {
     if (this.mode === 'tide' && this.motif.notes.some((n) => n.hold) && !seen(HOLD_SEEN)) {
       this.lesson = { real: this.motif };
       this.setMotif(G.holdLesson(this.motif));
-      this.showCard(t('card.holdNew'), t('card.holdLesson'), '', 6500);
+      this.showCard(t('card.holdNew'), t(FINE ? 'card.holdLessonPc' : 'card.holdLesson'), '', 6500);
       return this.enterInterlude(5, () => this.enterCall());
     }
     this.lesson = null;
@@ -811,7 +812,7 @@ class Cymora {
       this.setMotif(real);
       return this.enterInterlude(4.2, () => this.enterCall());
     }
-    this.whisper(t('w.lessonAgain'), 4200);
+    this.whisper(t(FINE ? 'w.lessonAgainPc' : 'w.lessonAgain'), 4200);
     this.enterInterlude(3.4, () => this.enterCall(true));
   }
 
@@ -845,7 +846,9 @@ class Cymora {
     this.phaseAt = this.clock;
     this.touchedAt = null;
     if (this.afk) this.afk.stage = 0;
-    if (this.lesson) this.whisper(t('w.lessonTurn'), 15000);
+    this.heldNotes = new Set();
+    this.tune = null;
+    if (this.lesson) this.whisper(t(FINE ? 'w.lessonTurnPc' : 'w.lessonTurn'), 15000);
     else this.whisper(t(this.helping ? 'w.help' : 'w.turn'), 2600);
   }
 
@@ -1071,6 +1074,7 @@ class Cymora {
       this.feel('touch');
       this.tune = { next: 0, at: this.clock };
       this.held = 0;
+      this.heldNotes = new Set();
       this.holding = null;
       this.followTune(y); // on peut poser le doigt directement sur la première note
     }
@@ -1092,7 +1096,7 @@ class Cymora {
     this.feel('note');
     this.pulse(0.22);
     if (want.hold) {
-      this.holding = { deg: want.deg, from: this.clock, k: 0, done: false };
+      this.holding = { deg: want.deg, idx: tune.next - 1, from: this.clock, k: 0, acc: 0, off: 0, done: false };
       this.whisper(t('w.hold'), 1300);
     }
   }
@@ -1168,17 +1172,29 @@ class Cymora {
     const h = this.holding;
     if (!h || h.done) return;
     const c = this.touch;
-    if (!c || this.phase !== 'turn' || Math.abs(G.yDegree(c.y) - h.deg) > 0.6) {
-      this.holding = null;
-      if (c) this.whisper(t('w.holdLost'), 1400);
+    if (!c || this.phase !== 'turn') { this.holding = null; return; }
+    // Un tremblement bref ne casse pas la tenue : la jauge s'arrête, et ne se perd qu'après 0,25 s hors de la note.
+    if (Math.abs(G.yDegree(c.y) - h.deg) > 0.6) {
+      h.off = (h.off ?? 0) + STEP;
+      if (h.off > 0.25) {
+        this.holding = null;
+        this.whisper(t('w.holdLost'), 1400);
+      }
       return;
     }
-    h.k = clamp((this.clock - h.from) / G.HOLD, 0, 1);
+    h.off = 0;
+    h.acc = (h.acc ?? 0) + STEP;
+    const before = h.k;
+    h.k = clamp(h.acc / G.HOLD, 0, 1);
     if (Math.random() < 0.25) this.E.addWake(this.world, c.x, c.y, 0, 0, 0.02 + h.k * 0.03);
+    // La jauge se sent (un tic au tiers et aux deux tiers) et s'entend (un souffle à mi-chemin).
+    if ((before < 1 / 3 && h.k >= 1 / 3) || (before < 2 / 3 && h.k >= 2 / 3)) haptic(50);
+    if (before < 0.5 && h.k >= 0.5 && this.audio.enabled) this.audio.note(G.degreeFreq(h.deg), { voice: 'breath', velocity: 0.2, pan: (c.x - 0.5) * 1.2 });
     if (h.k >= 1) {
       h.done = true;
       h.doneAt = this.clock;
       this.held = (this.held ?? 0) + 1;
+      (this.heldNotes ??= new Set()).add(h.idx);
       this.feel('close');
       this.pulse(0.5);
       this.bloom(0.35);
@@ -1508,7 +1524,7 @@ class Cymora {
       g.restore();
     };
     /** Anneau fin (note tenue, ou jauge de tenue quand `frac` < 1, partant du haut). */
-    const ring = (x, y, rad, color, alpha, frac = 1, width = 1.4) => {
+    const ring = (x, y, rad, color, alpha, frac = 1, width = 1.4, dash = null) => {
       if (alpha <= 0.01 || frac <= 0) return;
       g.save();
       g.globalAlpha = alpha;
@@ -1517,6 +1533,7 @@ class Cymora {
       g.shadowBlur = 12 * d;
       g.lineWidth = width * d;
       g.lineCap = 'round';
+      if (dash) g.setLineDash(dash.map((v) => v * d));
       g.beginPath();
       g.arc(x, y, rad, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, frac));
       g.stroke();
@@ -1578,10 +1595,18 @@ class Cymora {
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha);
         const dots = guide === 'glimpse' ? 0.22 : alpha;
-        for (const n of notes) {
+        // La prochaine note tenue à atteindre brille davantage et s'entoure d'un second anneau qui appelle.
+        const nextHold = notes.findIndex((n, i) => n.hold && i >= (this.tune && this.touch ? this.tune.next : 0) && !this.heldNotes?.has(i));
+        notes.forEach((n, i) => {
           if (dots > 0.01) this.orb(g, X(n), Y(n), (4 + n.dur * 4) * d, inks.guide, dots * 0.85);
-          holdRing(n, Math.max(dots, 0.6)); // une note tenue reste toujours visible, même quand le chant s'efface
-        }
+          if (!n.hold) return;
+          const doneHere = this.heldNotes?.has(i) && this.touch;
+          holdRing(n, doneHere ? 0.35 : i === nextHold ? 1 : Math.max(dots, 0.6)); // une note tenue reste visible, même quand le chant s'efface
+          if (i === nextHold && !(this.holding && !this.holding.done)) {
+            const u = (this.clock * 0.7) % 1;
+            ring(X(n), Y(n), (24 + u * 22) * d, inks.guide, 0.55 * (1 - u), 1, 1.2);
+          }
+        });
         if (this.touchedAt == null && guide !== 'none') {
           const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.4);
           const start = points[0];
@@ -1602,6 +1627,13 @@ class Cymora {
         const fade = clamp(1 - (since - 2.6) / 1.5, 0, 1) * (pass ? 1 : clamp(since / 0.6, 0, 1) * 0.6);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, 0.85 * fade);
         for (const n of notes) this.orb(g, X(n), Y(n), (4 + n.dur * 5) * d, inks.guide, 0.8 * fade);
+        // Les tenues réussies : un anneau plein ; manquées : un anneau brisé.
+        const show = clamp(1 - (since - 2.6) / 1.5, 0, 1);
+        notes.forEach((n, i) => {
+          if (!n.hold || this.lesson) return;
+          const ok = this.heldNotes?.has(i);
+          ring(X(n), Y(n), 22 * d, inks.guide, (ok ? 0.95 : 0.9) * show, 1, ok ? 2.4 : 2, ok ? null : [4, 6]);
+        });
       }
     }
 

@@ -1,7 +1,7 @@
 // CYMORA — la scène. Auteur : CLAUDE.
 // La matière chante un motif (sa figure de Chladni suit chaque note), puis c'est au visiteur
 // de le retracer : la hauteur du geste est la note. game.js mesure l'accord ; s'il est juste,
-// la matière se cristallise et la marée avance. En improvisation, on retrouve le dialogue libre
+// la matière se cristallise et le chapitre avance. En improvisation, on retrouve le dialogue libre
 // de la V3 (phrase.js, CODEX) : on trace, on se tait, elle répond.
 
 import { createObjectView, createRenderer } from './render.js';
@@ -18,9 +18,8 @@ const t = i18n.t;
 const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
-const SEEN = 'cymora.prologue.v1';
 const SETTINGS = 'cymora.settings.v1';
-const VERSION = '1.5.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.6.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -53,7 +52,6 @@ async function boot() {
   i18n.apply();
   document.title = t('meta.title');
   startIntro();
-  const began = performance.now();
   splashProgress(0.08);
   let E;
   let D = null;
@@ -71,7 +69,7 @@ async function boot() {
   app.start();
   // Toutes les figures sont préparées pendant le chargement : plus aucun à-coup en jouant.
   await app.prepare((k) => splashProgress(0.2 + 0.8 * k));
-  await openThreshold(began);
+  await openThreshold();
   if ('serviceWorker' in navigator && location.protocol === 'https:') watchUpdates();
   // Demande au navigateur de ne pas effacer la progression quand l'appareil manque de place.
   navigator.storage?.persist?.().catch(() => {});
@@ -204,61 +202,71 @@ function splashProgress(k) {
 }
 
 /**
- * L'intro vidéo remplace le logo fixe. Si elle ne peut pas se lire (hors ligne, économie de données,
- * animations réduites), le logo reprend sa place et on n'attend pas.
+ * Lancement : la vidéo d'intro joue en entier (avec le son si le navigateur l'accepte), puis l'accueil.
+ * Les navigateurs interdisent le son avant un premier toucher : la vidéo part alors en muet et un bouton
+ * propose le son. « Passer » apparaît dès que le jeu est prêt. Si la vidéo ne peut pas se lire (hors ligne,
+ * économie de données, animations réduites), le logo et la barre de chargement reprennent leur place.
  */
+const intro = { ended: false, done: null };
+intro.finished = new Promise((r) => { intro.done = r; });
+function introOver() {
+  if (intro.ended) return;
+  intro.ended = true;
+  intro.done();
+}
 function startIntro() {
   const v = $('#splash-video');
-  const fallback = () => document.body.classList.add('no-intro');
+  const fallback = () => {
+    document.body.classList.remove('has-intro');
+    document.body.classList.add('no-intro');
+    introOver();
+  };
   if (reducedMotion || !v) { v?.remove(); fallback(); return; }
   v.addEventListener('error', fallback, { once: true });
-  v.addEventListener('playing', () => document.body.classList.add('has-intro'), { once: true });
-  const p = v.play();
-  p?.catch?.(fallback);
-  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 2500);
-}
-function introMoment(ms) {
-  if (!document.body.classList.contains('has-intro') || ms <= 0) return Promise.resolve();
-  return new Promise((done) => {
-    const timer = setTimeout(finish, ms);
-    const splash = $('#splash');
-    function finish() { clearTimeout(timer); splash.removeEventListener('pointerdown', finish); done(); }
-    splash.addEventListener('pointerdown', finish, { once: true });
+  v.addEventListener('playing', () => { document.body.classList.add('has-intro'); glowLoop(v); }, { once: true });
+  v.addEventListener('ended', introOver, { once: true });
+  const sound = $('#splash-sound');
+  sound.addEventListener('click', () => { v.muted = false; sound.hidden = true; v.play().catch(() => {}); });
+  $('#splash-skip').addEventListener('click', () => { v.pause(); introOver(); });
+  v.muted = false;
+  v.play().catch(() => {
+    // Son refusé avant tout geste : on joue en muet et on propose le son.
+    v.muted = true;
+    v.play().then(() => { sound.hidden = false; }, fallback);
   });
+  setTimeout(() => { if (!document.body.classList.contains('has-intro')) fallback(); }, 3000);
+  setTimeout(introOver, 14000); // filet de sécurité si « ended » ne vient jamais
+}
+/** Écran large : la vidéo (portrait) est prolongée sur les côtés par son propre reflet, flou. */
+function glowLoop(v) {
+  const cv = $('#splash-glow');
+  const g = cv.getContext('2d');
+  const tick = () => {
+    if (document.body.dataset.state !== 'loading') return;
+    const W = innerWidth;
+    const H = innerHeight;
+    if (W > H * 0.8) {
+      const h = 36;
+      const w = Math.round((h * W) / H);
+      if (cv.width !== w) { cv.width = w; cv.height = h; }
+      // « cover » : on remplit tout l'écran avec le centre de la vidéo.
+      const vw = v.videoWidth || 720;
+      const vh = v.videoHeight || 1280;
+      const k = Math.max(w / vw, h / vh);
+      g.drawImage(v, (w - vw * k) / 2, (h - vh * k) / 2, vw * k, vh * k);
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
 }
 
-/** Fin du chargement. Au premier lancement, le prologue se lit avant d'entrer ; ensuite, on entre directement. */
-async function openThreshold(began) {
-  let seen = false;
-  try { seen = Boolean(localStorage.getItem(SEEN)); } catch { seen = false; }
+/** Fin du chargement : on attend la fin de l'intro (ou « Passer »), puis l'accueil. */
+async function openThreshold() {
   const splash = $('#splash');
   splash.classList.add('is-ready');
-  if (seen && !new URLSearchParams(location.search).has('prologue')) {
-    // On laisse la rosace de l'intro se former (≈ 5 s) ; un toucher l'abrège.
-    await introMoment(5200 - (performance.now() - began));
-    document.body.dataset.state = 'threshold';
-    return;
-  }
-  // Premier lancement : l'intro se joue en entier avant le prologue.
-  await introMoment(9800 - (performance.now() - began));
-  const lines = [...$('#prologue').children];
-  $('#prologue').hidden = false;
-  const enter = $('#splash-enter');
-  const skip = $('#splash-skip');
-  skip.hidden = false;
-  const timers = [];
-  const showAll = () => {
-    timers.forEach(clearTimeout);
-    lines.forEach((l) => l.classList.add('is-on'));
-    skip.hidden = true;
-    enter.hidden = false;
-    enter.focus({ preventScroll: true });
-  };
-  lines.forEach((l, i) => timers.push(setTimeout(() => l.classList.add('is-on'), 500 + i * (reducedMotion ? 300 : 2600))));
-  timers.push(setTimeout(showAll, 500 + lines.length * (reducedMotion ? 300 : 2600)));
-  skip.addEventListener('click', showAll, { once: true });
-  await new Promise((r) => enter.addEventListener('click', r, { once: true }));
-  try { localStorage.setItem(SEEN, '1'); } catch { /* sans stockage : le prologue reviendra */ }
+  if (!intro.ended) $('#splash-skip').hidden = false;
+  await intro.finished;
+  $('#splash-video')?.pause();
   document.body.dataset.state = 'threshold';
 }
 
@@ -644,7 +652,7 @@ class Cymora {
     this.mode = 'tide';
     this.result = null;
     this.tideIdx = k;
-    // Une marée déjà franchie se rejoue depuis son premier chant ; la marée en cours reprend où l'on était.
+    // Un chapitre déjà franchi se rejoue depuis son premier chant ; le chapitre en cours reprend où l'on était.
     this.motifIdx = k === this.progress.tide ? this.progress.index : 0;
     this.setTone(G.TIDES[k].id);
     this.setRound(k >= 2 ? ROUND : 0);
@@ -714,7 +722,7 @@ class Cymora {
     return G.TIDES[this.tideIdx]?.guide ?? 'always';
   }
 
-  /** Après deux essais sans accord, la matière montre le chemin, quelle que soit la marée. */
+  /** Après deux essais sans accord, la matière montre le chemin, quel que soit le chapitre. */
   get helping() {
     return this.attempts >= 2 && this.guide !== 'always';
   }
@@ -1338,7 +1346,7 @@ class Cymora {
           this.orb(g, X(n), Y(n), (4 + n.dur * 5) * d * (0.5 + 0.5 * bloom), inks.guide, alpha * (0.55 + 0.45 * Math.max(0, 1 - age / n.dur)));
         }
       } else if (this.phase === 'turn') {
-        // À toi : le chant reste en filigrane (selon la marée), la première perle respire.
+        // À toi : le chant reste en filigrane (selon le chapitre), la première perle respire.
         let alpha = { always: 0.72, call: 0.78, glimpse: 0, none: 0 }[guide];
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha);
@@ -1465,7 +1473,7 @@ class Cymora {
     g.shadowBlur = 16 * d;
     path();
     g.stroke();
-    // Cœur blanc : la ligne reste lisible quelle que soit la couleur de la marée.
+    // Cœur blanc : la ligne reste lisible quelle que soit la couleur du chapitre.
     g.shadowBlur = 0;
     g.strokeStyle = 'rgba(255,255,255,1)';
     g.lineWidth = 1.6 * d;

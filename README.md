@@ -8,7 +8,7 @@ Cette branche (`Resonance`) fait de l'œuvre III de l'exposition QUATRE, *Réson
 
 ## Ce qu'on y fait
 
-- **Quatre marées**, de cinq chants chacune, pour apprendre à entendre :
+- **Quatre chapitres**, de cinq chants chacune, pour apprendre à entendre :
   1. *Voir* — le tracé du chant reste visible ;
   2. *Suivre* — il s'efface dès qu'on répond ;
   3. *Se souvenir* — à peine une esquisse ;
@@ -47,7 +47,7 @@ Puis ouvrir http://127.0.0.1:4173/. Tests : `npm test`. Audit des fichiers publi
 
 | Fichier | Rôle |
 |---|---|
-| `public/src/game.js` | motifs, mesure de l'accord (DTW sur le contour mélodique), marées, progression |
+| `public/src/game.js` | motifs, mesure de l'accord (DTW sur le contour mélodique), chapitres, progression |
 | `public/src/app.js` | la scène : chant, réponse, écho, interface |
 | `public/src/cymatics.js` | plaque circulaire (modes de Bessel) : la note devient une rosace |
 | `public/src/engine.js`, `render.js` | matière (particules) et rendu WebGL2 / Canvas 2D |

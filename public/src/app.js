@@ -19,13 +19,15 @@ const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
-const VERSION = '1.8.1'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.9.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
 const LEGACY = { [STORE]: 'resonance.progress.v1', [FREE_STORE]: 'resonance.free.v1' }; // noms d'avant Cymora
 const COUNT = 12000;
 const ROMAN = ['I', 'II', 'III', 'IV'];
+/** Lancé en local (ce PC ou le réseau de la maison) : l'atelier des prototypes y est visible, jamais en ligne. */
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|.+\.local)$/.test(location.hostname);
 const VERDICT = { resonance: 'w.resonance', close: 'w.close', near: 'w.near', far: 'w.far' }; // verdict → murmure
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -409,7 +411,11 @@ class Cymora {
     const map = $('#map');
     $('#map-daily').addEventListener('click', async () => { await closeDialog(map); this.startDaily(); });
     $('#map-free').addEventListener('click', async () => { await closeDialog(map); this.startFree(); });
-    $('#map-trial').addEventListener('click', async () => { await closeDialog(map); this.startTrial(); });
+    // L'atelier (prototypes) n'existe qu'en local : sur le site en ligne, ses boutons sont retirés.
+    if (LOCAL) {
+      $('#map-trial').addEventListener('click', async () => { await closeDialog(map); this.startTrial('hold'); });
+      $('#map-pulse').addEventListener('click', async () => { await closeDialog(map); this.startTrial('pulse'); });
+    } else for (const id of ['#map-trial', '#map-pulse']) $(id)?.remove();
     $('#side-map').addEventListener('click', () => this.openMap());
     $('#reset').addEventListener('click', () => {
       const before = this.progress;
@@ -561,7 +567,7 @@ class Cymora {
     if (this.mode === 'tide') label = t('where', { n: ROMAN[this.tideIdx], name: t(`tide.${G.TIDES[this.tideIdx].id}`) });
     else if (this.mode === 'daily') label = t('where.daily');
     else if (this.mode === 'free') label = t('where.free');
-    else if (this.mode === 'trial') label = t('card.trial');
+    else if (this.mode === 'trial') label = t(`card.${this.trialKind}`);
     $('#where-label').textContent = label;
     this.updateSide();
     const pearls = $('#pearls');
@@ -592,8 +598,8 @@ class Cymora {
       line = t('card.freeLine');
     } else if (this.mode === 'trial') {
       kicker = t('side.trial', { n: (this.motifIdx ?? 0) + 1 });
-      title = t('card.trial');
-      line = t('card.trialLine');
+      title = t(`card.${this.trialKind}`);
+      line = t(`card.${this.trialKind}Line`);
     }
     const side = $('#side');
     const write = () => {
@@ -701,16 +707,30 @@ class Cymora {
     this.enterInterlude(3.6, () => this.newMotif());
   }
 
-  /** Atelier « Tenir » (prototype) : des chants à notes tenues, hors de l'aventure et sans rien sauvegarder. */
-  startTrial() {
+  /**
+   * Atelier (prototypes de gestes, hors de l'aventure, sans rien sauvegarder) :
+   * « hold » = Tenir (notes tenues), « pulse » = Pulsation (atteindre chaque note en mesure).
+   */
+  startTrial(kind = 'hold') {
     this.mode = 'trial';
+    this.trialKind = kind;
     this.result = null;
     this.motifIdx = 0;
-    this.setTone('follow');
+    this.setTone(kind === 'pulse' ? 'remember' : 'follow');
     this.setRound(0);
     this.relabel();
-    this.showCard(t('card.trial'), t('card.trialLine'), '', 6000);
+    this.showCard(t(`card.${kind}`), t(`card.${kind}Line`), '', 6000);
     this.enterInterlude(4.6, () => this.newMotif());
+  }
+
+  /** Pulsation : la plaque bat la mesure pendant son chant et pendant ton tour (une onde, un souffle grave). */
+  stepBeat() {
+    if (this.mode !== 'trial' || this.trialKind !== 'pulse' || (this.phase !== 'call' && this.phase !== 'turn')) { this.beatIdx = null; return; }
+    const b = Math.floor((this.clock - this.phaseAt) / (G.BEAT * this.tempo));
+    if (b === this.beatIdx) return;
+    this.beatIdx = b;
+    this.pulse(b % 2 ? 0.1 : 0.16);
+    if (this.phase === 'turn' && this.audio.enabled) this.audio.note(G.degreeFreq(0), { voice: 'breath', velocity: b % 2 ? 0.08 : 0.12 });
   }
 
   startFree() {
@@ -739,7 +759,9 @@ class Cymora {
   }
 
   newMotif() {
-    this.motif = this.mode === 'daily' ? G.dailyMotif(this.today) : this.mode === 'trial' ? G.holdMotif(this.motifIdx) : G.tideMotif(this.tideIdx, this.motifIdx);
+    this.motif = this.mode === 'daily' ? G.dailyMotif(this.today)
+      : this.mode === 'trial' ? (this.trialKind === 'pulse' ? G.pulseMotif(this.motifIdx) : G.holdMotif(this.motifIdx))
+      : G.tideMotif(this.tideIdx, this.motifIdx);
     this.trace = G.motifTrace(this.motif);
     this.song = songOf(this.motif);
     this.attempts = 0;
@@ -855,6 +877,13 @@ class Cymora {
       const score = Math.round(r.score * (0.7 + (0.3 * held) / holds) * 1000) / 1000;
       r = { ...r, score, verdict: G.verdictOf(score, this.passMark) };
       holdLine = ` · ${t('w.holds', { n: held, of: holds })}`;
+    }
+    // Atelier « Pulsation » : le rythme compte pour moitié ; on dit si l'on était pressé, lent ou en mesure.
+    if (this.mode === 'trial' && this.trialKind === 'pulse') {
+      const rh = G.rhythmOf(this.motif.notes, this.tune?.times ?? [], this.tempo);
+      const score = Math.round(r.score * (0.5 + 0.5 * rh.score) * 1000) / 1000;
+      r = { ...r, score, verdict: G.verdictOf(score, this.passMark), rhythm: rh };
+      holdLine = ` · ${t(rh.score >= 0.8 ? 'w.inTime' : rh.drift < 0 ? 'w.rushed' : 'w.dragged')}`;
     }
     this.holding = null;
     this.result = r;
@@ -1012,6 +1041,7 @@ class Cymora {
     if (tune.next > 0 && notes[tune.next - 1].deg === want.deg && this.clock - tune.at < 0.25) return;
     tune.next++;
     tune.at = this.clock;
+    (tune.times ??= [])[tune.next - 1] = this.clock;
     this.feel('note');
     this.pulse(0.22);
     if (want.hold) {
@@ -1136,6 +1166,7 @@ class Cymora {
     }
 
     this.stepHold();
+    this.stepBeat();
     if (this.phase === 'call') target = this.stepCall() ?? target;
     else if (this.phase === 'echo') target = this.stepEcho() ?? target;
     else if (this.phase === 'interlude') {

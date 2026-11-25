@@ -141,6 +141,52 @@ export function holdMotif(index) {
   return { seed: m.seed, notes, duration: round(at - 0.1, 3) };
 }
 
+/** Atelier « Pulsation » : durée d'un temps (s). */
+export const BEAT = 0.62;
+
+/**
+ * Un chant de l'atelier « Pulsation » : chaque note tombe sur un temps régulier ;
+ * dès le deuxième chant, certaines durent deux temps.
+ */
+export function pulseMotif(index) {
+  const i = Math.max(0, Math.floor(index));
+  const m = motif(hash(`pulse:${i}`), 4 + Math.min(2, i), 4);
+  const r = rng(m.seed ^ 0xbea7);
+  let at = 0;
+  const notes = m.notes.map((n, j) => {
+    const beats = i >= 1 && j > 0 && j < m.notes.length - 1 && r() < 0.35 ? 2 : 1;
+    const out = { deg: n.deg, at: round(at, 3), dur: round(beats * BEAT - 0.08, 3), beats };
+    at += beats * BEAT;
+    return out;
+  });
+  return { seed: m.seed, notes, duration: round(at - 0.08, 3) };
+}
+
+/**
+ * Justesse rythmique : compare les intervalles entre les notes atteintes à ceux du chant.
+ * @param {{at:number}[]} notes notes du chant
+ * @param {number[]} times instants où le doigt a atteint chaque note (dans l'ordre)
+ * @param {number} tempo facteur de lenteur du chant (1 = normal)
+ * @returns {{score:number, drift:number}} score 0..1 ; drift < 0 : pressé, > 0 : lent
+ */
+export function rhythmOf(notes, times, tempo = 1) {
+  const n = notes.length - 1;
+  if (n < 1) return { score: 1, drift: 0 };
+  let err = 0;
+  let drift = 0;
+  let counted = 0;
+  for (let j = 1; j <= n; j++) {
+    if (times[j] == null || times[j - 1] == null) { err += 1; continue; }
+    const want = (notes[j].at - notes[j - 1].at) * tempo;
+    const ratio = (times[j] - times[j - 1]) / want;
+    // ±20 % de marge : le doigt « atteint » une note pendant son glissando, plus ou moins tôt selon le saut.
+    err += Math.min(1, Math.max(0, Math.abs(ratio - 1) - 0.2));
+    drift += ratio - 1;
+    counted++;
+  }
+  return { score: round(clamp(1 - (err / n) * 2.5, 0, 1), 3), drift: round(counted ? drift / counted : 0, 3) };
+}
+
 /** Verdict d'un score, selon le seuil pour avancer. */
 export function verdictOf(score, pass = PASS) {
   return score >= RESONANCE ? 'resonance' : score >= pass ? 'close' : score >= NEAR ? 'near' : 'far';

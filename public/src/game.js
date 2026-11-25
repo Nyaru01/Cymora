@@ -113,7 +113,7 @@ export function tideMotif(tide, index) {
   const t = TIDES[clamp(tide, 0, TIDES.length - 1)];
   const [a, b] = t.notes;
   const count = a + Math.round(((b - a) * clamp(index, 0, MOTIFS_PER_TIDE - 1)) / (MOTIFS_PER_TIDE - 1));
-  return motif(hash(`tide:${t.id}:${index}`), count, t.span);
+  return withHolds(motif(hash(`tide:${t.id}:${index}`), count, t.span), tideHolds(tide, index));
 }
 
 /** Atelier « Tenir » : temps (s) pendant lequel le doigt doit rester sur une note cerclée. */
@@ -125,11 +125,31 @@ export const HOLD = 1.3;
  */
 export function holdMotif(index) {
   const i = Math.max(0, Math.floor(index));
-  const m = motif(hash(`hold:${i}`), 3 + Math.min(2, i), 4);
+  return withHolds(motif(hash(`hold:${i}`), 3 + Math.min(2, i), 4), i >= 2 ? 2 : 1);
+}
+
+/** Tutoriel : une seule note tenue, à la hauteur de la première note tenue du chant qui suit. */
+export function holdLesson(m) {
+  const deg = m.notes.find((n) => n.hold)?.deg ?? 5;
+  const dur = round(HOLD + 1, 3);
+  return { seed: m.seed, notes: [{ deg, at: 0, dur, hold: true }], duration: dur };
+}
+
+/** Nombre de notes tenues dans un chant de l'aventure : aucune au chapitre I, puis de plus en plus tôt. */
+export function tideHolds(tide, index) {
+  if (tide <= 0) return 0;
+  if (tide === 1) return index >= 2 ? 1 : 0;
+  if (tide === 2) return index >= 1 ? 1 : 0;
+  return index >= 3 ? 2 : 1;
+}
+
+/** Rend `count` notes du motif longues et cerclées (jamais la première ; la deuxième, si possible, loin de l'autre). */
+export function withHolds(m, count) {
   const last = m.notes.length - 1;
+  if (count <= 0 || last < 1) return m;
   const k = 1 + Math.floor(rng(m.seed ^ 0x51ed)() * last);
   const picks = new Set([k]);
-  if (i >= 2 && last >= 3) picks.add(k === last ? 1 : last);
+  if (count >= 2 && last >= 3) picks.add(k === last ? 1 : last);
   let at = 0;
   const notes = m.notes.map((n, j) => {
     const hold = picks.has(j);

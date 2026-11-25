@@ -42,6 +42,25 @@ test('rhythmOf : en mesure, pressé, lent, notes manquées', () => {
   assert.equal(G.rhythmOf(m.notes, slower, 1.25).score, 1, 'le tempo ralenti du rechant est pris en compte');
 });
 
+test('aventure : aucune note tenue au chapitre I, puis de plus en plus tôt', () => {
+  const count = (t, i) => G.tideMotif(t, i).notes.filter((n) => n.hold).length;
+  for (let i = 0; i < G.MOTIFS_PER_TIDE; i++) assert.equal(count(0, i), 0);
+  assert.equal(count(1, 0), 0);
+  assert.equal(count(1, 2), 1);
+  assert.equal(count(2, 1), 1);
+  assert.equal(count(3, 0), 1);
+  assert.equal(count(3, 4), 2);
+  for (let t = 1; t < G.TIDES.length; t++) for (let i = 0; i < G.MOTIFS_PER_TIDE; i++) assert.ok(!G.tideMotif(t, i).notes[0].hold);
+});
+
+test('tutoriel : une seule note tenue, à la hauteur de la première tenue du chant', () => {
+  const m = G.tideMotif(1, 2);
+  const lesson = G.holdLesson(m);
+  assert.equal(lesson.notes.length, 1);
+  assert.ok(lesson.notes[0].hold && lesson.notes[0].dur > G.HOLD);
+  assert.equal(lesson.notes[0].deg, m.notes.find((n) => n.hold).deg);
+});
+
 test('verdictOf suit les seuils', () => {
   assert.equal(G.verdictOf(0.96), 'resonance');
   assert.equal(G.verdictOf(0.86), 'close');

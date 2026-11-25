@@ -19,7 +19,10 @@ const STEP = 1 / 60;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
-const VERSION = '1.9.0'; // à garder égal à package.json (vérifié par les tests)
+const HOLD_SEEN = 'cymora.seen.hold'; // la carte « notes tenues » n'apparaît qu'une fois
+const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
+const RESET_EPOCH = '2026-11-25';
+const VERSION = '1.11.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -33,6 +36,7 @@ const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 /** Lit une clé, ou son ancien nom d'avant Cymora. */
 const stored = (key) => localStorage.getItem(key) ?? localStorage.getItem(LEGACY[key]);
+const seen = (key) => { try { return Boolean(localStorage.getItem(key)); } catch { return false; } };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Couleurs de chaque moment : encre du guide, encre du geste. Le reste est en CSS. */
@@ -326,6 +330,13 @@ class Cymora {
   // ---------------------------------------------------------------- progression
 
   load() {
+    // Remise à zéro générale (une seule fois par appareil) : les chants ont changé avec les notes tenues.
+    try {
+      if (localStorage.getItem(RESET_KEY) !== RESET_EPOCH) {
+        for (const key of [STORE, LEGACY[STORE], HOLD_SEEN]) localStorage.removeItem(key);
+        localStorage.setItem(RESET_KEY, RESET_EPOCH);
+      }
+    } catch { /* stockage indisponible : rien à effacer */ }
     try { return G.readProgress(stored(STORE)); } catch { return G.freshProgress(); }
   }
 
@@ -767,7 +778,41 @@ class Cymora {
     this.attempts = 0;
     this.afk = { stage: 0, replays: 0, next: 0, stir: 0 };
     this.updateSide();
+    // Première note tenue de l'aventure : un tutoriel d'abord. Elle chante une seule note tenue,
+    // on la tient jusqu'à ce que l'anneau se ferme ; ensuite seulement vient le vrai chant.
+    if (this.mode === 'tide' && this.motif.notes.some((n) => n.hold) && !seen(HOLD_SEEN)) {
+      this.lesson = { real: this.motif };
+      this.setMotif(G.holdLesson(this.motif));
+      this.showCard(t('card.holdNew'), t('card.holdLesson'), '', 6500);
+      return this.enterInterlude(5, () => this.enterCall());
+    }
+    this.lesson = null;
     this.enterCall();
+  }
+
+  setMotif(m) {
+    this.motif = m;
+    this.trace = G.motifTrace(m);
+    this.song = songOf(m);
+  }
+
+  /** Tutoriel des notes tenues : réussi dès que l'anneau s'est fermé une fois ; sinon elle la rechante. */
+  judgeLesson() {
+    this.holding = null;
+    this.stroke = null;
+    if ((this.held ?? 0) >= 1) {
+      try { localStorage.setItem(HOLD_SEEN, '1'); } catch { /* on la présentera encore */ }
+      const real = this.lesson.real;
+      this.lesson = null;
+      this.whisper(t('w.lessonOk'), 4200);
+      this.feel('resonance');
+      this.pulse(1);
+      this.bloom(0.8);
+      this.setMotif(real);
+      return this.enterInterlude(4.2, () => this.enterCall());
+    }
+    this.whisper(t('w.lessonAgain'), 4200);
+    this.enterInterlude(3.4, () => this.enterCall(true));
   }
 
   /** Le seuil pour avancer : 85 % dans l'aventure, 90 % pour la résonance du jour. */
@@ -800,7 +845,8 @@ class Cymora {
     this.phaseAt = this.clock;
     this.touchedAt = null;
     if (this.afk) this.afk.stage = 0;
-    this.whisper(t(this.helping ? 'w.help' : 'w.turn'), 2600);
+    if (this.lesson) this.whisper(t('w.lessonTurn'), 15000);
+    else this.whisper(t(this.helping ? 'w.help' : 'w.turn'), 2600);
   }
 
   /**
@@ -863,14 +909,15 @@ class Cymora {
   }
 
   judge(points) {
+    if (this.lesson) return this.judgeLesson();
     const before = G.resonanceScore(this.progress);
     let r = G.attune(this.motif, points, this.passMark);
     if (r.verdict === 'silent') {
       this.whisper(t('w.silent'), 2200);
       return;
     }
-    // Atelier « Tenir » : le contour compte toujours, chaque tenue manquée retire jusqu'à 30 % du score.
-    const holds = this.mode === 'trial' ? this.motif.notes.filter((n) => n.hold).length : 0;
+    // Notes tenues (dès le chapitre II, et dans l'atelier) : chaque tenue manquée retire jusqu'à 30 % du score.
+    const holds = this.motif.notes.filter((n) => n.hold).length;
     let holdLine = '';
     if (holds) {
       const held = Math.min(holds, this.held ?? 0);
@@ -1136,6 +1183,7 @@ class Cymora {
       this.pulse(0.5);
       this.bloom(0.35);
       if (this.audio.enabled) this.audio.note(G.degreeFreq(h.deg) * 2, { voice: 'bell', velocity: 0.28, pan: (c.x - 0.5) * 1.2 });
+      if (this.lesson) this.endTouch(); // tutoriel : l'anneau fermé suffit, pas besoin de lever le doigt
     }
   }
 
@@ -1530,7 +1578,10 @@ class Cymora {
         if (guide === 'call' && this.touchedAt != null) alpha *= clamp(1 - (this.clock - this.touchedAt) / 0.8, 0, 1);
         this.drawSong(g, X, Y, d, points, points.length, inks.guide, alpha);
         const dots = guide === 'glimpse' ? 0.22 : alpha;
-        for (const n of notes) if (dots > 0.01) { this.orb(g, X(n), Y(n), (4 + n.dur * 4) * d, inks.guide, dots * 0.85); holdRing(n, Math.max(dots, 0.5)); }
+        for (const n of notes) {
+          if (dots > 0.01) this.orb(g, X(n), Y(n), (4 + n.dur * 4) * d, inks.guide, dots * 0.85);
+          holdRing(n, Math.max(dots, 0.6)); // une note tenue reste toujours visible, même quand le chant s'efface
+        }
         if (this.touchedAt == null && guide !== 'none') {
           const breath = 0.5 + 0.5 * Math.sin(this.clock * 2.4);
           const start = points[0];

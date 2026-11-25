@@ -157,6 +157,92 @@ body[data-state="loading"] .bar__where { opacity: 0; visibility: hidden; }
 .lang-switch button { min-width: 44px; min-height: 42px; border: 0; background: transparent; color: var(--faint); font: 600 11px/1 var(--mono); letter-spacing: 0.1em; cursor: pointer; }
 .lang-switch button[aria-pressed="true"] { color: var(--bg-2); background: var(--accent); }
 
+/* ---------- Score, son, sauvegarde ---------- */
+
+.score {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  color: var(--soft);
+  font: 600 14px/1 var(--mono);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+body:not([data-state="play"]) .score { display: none; }
+.score__star { width: 15px; height: 15px; color: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
+.score.is-up { animation: scoreUp 1.2s var(--ease); }
+@keyframes scoreUp { 30% { border-color: var(--accent); box-shadow: 0 0 26px -4px var(--accent); transform: scale(1.06); } }
+.score__saved { width: 0; overflow: hidden; color: var(--accent); font-size: 12px; opacity: 0; transition: width 0.3s; }
+.score__saved.is-on { animation: saved 2.2s var(--ease); }
+@keyframes saved { 10%, 70% { opacity: 1; width: 12px; } 100% { opacity: 0; width: 0; } }
+.pill--icon { display: inline-grid; place-items: center; width: 44px; padding: 0; }
+.pill--icon svg { width: 20px; height: 20px; }
+#sound .sound__on { display: none; }
+#sound[aria-pressed="true"] .sound__on { display: block; }
+#sound[aria-pressed="true"] .sound__off { display: none; }
+
+/* ---------- Gain, confirmation ---------- */
+
+.gain {
+  position: absolute;
+  left: var(--field-cx);
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  font: 600 clamp(22px, 3.4vw, 34px)/1 var(--mono);
+  letter-spacing: 0.06em;
+  white-space: pre;
+  color: var(--soft);
+  text-shadow: 0 0 22px var(--accent), 0 0 44px var(--accent-2);
+  opacity: 0;
+  pointer-events: none;
+}
+.gain.is-on { animation: gain 2.4s var(--ease) forwards; }
+@keyframes gain {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.9); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -110%) scale(1); }
+}
+.scene.is-yes .scene__matter, .scene.is-yes .scene__ink { animation: yes 0.7s var(--ease); }
+.scene.is-no .scene__matter, .scene.is-no .scene__ink { animation: no 0.5s ease-in-out; }
+@keyframes yes { 25% { transform: scale(1.012); filter: var(--matter) brightness(1.45); } }
+@keyframes no { 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+
+/* ---------- Mise à jour ---------- */
+
+.update {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 9;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px 16px;
+  align-items: center;
+  width: min(440px, calc(100vw - 24px));
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 22px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--bg-1) 80%, var(--accent-2) 10%), rgba(3, 4, 11, 0.94));
+  backdrop-filter: blur(16px);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.9), 0 0 60px -30px var(--accent);
+  transform: translate(-50%, 30px);
+  opacity: 0;
+  transition: transform 0.6s var(--ease), opacity 0.5s;
+}
+.update.is-on { transform: translate(-50%, 0); opacity: 1; }
+.update__logo { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 0 24px -6px var(--accent); }
+.update__title { margin: 0 0 3px; font: italic 19px/1.2 var(--serif); color: var(--soft); }
+.update__line { margin: 0; font-size: 13px; line-height: 1.4; color: var(--dim); }
+.update__actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+
 /* ---------- Seuil ---------- */
 
 .threshold {
@@ -385,7 +471,9 @@ body[data-layout="wide"] .bar__where { display: none; }
 
 @media (max-width: 640px) {
   .whisper { font-size: 19px; }
-  .bar__where { padding: 0 12px; gap: 8px; font-size: 12.5px; }
+  body[data-state="play"] #lang { display: none; }
+  .score { padding: 0 12px; font-size: 13px; }
+  .bar__where { padding: 0 12px; gap: 8px; font-size: 12.5px; min-width: 0; }
   .pill { padding: 0 12px; }
   .map__more { grid-template-columns: 1fr; }
 }
@@ -415,6 +503,10 @@ body[data-layout="wide"] .bar__where { display: none; }
   .threshold__how { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .scene.is-yes .scene__matter, .scene.is-yes .scene__ink, .scene.is-no .scene__matter, .scene.is-no .scene__ink { animation: none; }
   .threshold__logo, .splash__logo { animation: none; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Sous la plaque, la carte s'efface au profit du score et du murmure. */
+.map__score { margin: -8px 0 16px; font: 600 13px/1 var(--mono); letter-spacing: 0.06em; color: var(--accent); }

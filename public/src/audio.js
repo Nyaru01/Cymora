@@ -284,7 +284,9 @@ export function createAudio() {
       if (!ensure()) return false;
       if (ctx.state === 'suspended') {
         try {
-          await ctx.resume();
+          // Certains navigateurs laissent resume() en suspens : on n'attend pas plus de 1,5 s.
+          const ok = await Promise.race([ctx.resume().then(() => true), new Promise((r) => setTimeout(() => r(false), 1500))]);
+          if (!ok || ctx.state !== 'running') return false;
         } catch {
           return false;
         }

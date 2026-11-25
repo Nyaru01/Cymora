@@ -1,13 +1,19 @@
-// CYMORA — hors ligne. Auteur : CLAUDE.
-// La page vient du réseau quand il est là (pour recevoir les mises à jour), du cache sinon ;
-// les autres fichiers viennent du cache et se rafraîchissent en arrière-plan.
-const CACHE = 'cymora-v3';
-const SHELL = ['./', './index.html', './manifest.json', './favicon.svg', './icons/icon-192.png', './icons/cymora-hero.jpg',
+// CYMORA — hors ligne et mises à jour. Auteur : CLAUDE.
+// Chaque version a son propre cache : la page et ses fichiers viennent toujours de la même version.
+// Une nouvelle version s'installe en arrière-plan puis attend : l'app propose de mettre à jour
+// (message « skip »), et rien ne change sous les doigts de quelqu'un qui joue.
+const VERSION = '1.1.0'; // à garder égal à la version de package.json (vérifié par les tests)
+const CACHE = `cymora-${VERSION}`;
+const SHELL = ['./', './manifest.json', './favicon.svg', './icons/icon-192.png', './icons/cymora-hero.jpg',
   './shared/i18n.js', './src/app.js', './src/game.js', './src/strings.js', './src/styles.css', './src/audio.js',
   './src/cymatics.js', './src/engine.js', './src/render.js', './src/phrase.js'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'skip') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -17,20 +23,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
+  if (req.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname === '/sw.js') return;
   if (req.mode === 'navigate') {
-    event.respondWith(fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put('./', copy));
-      return res;
-    }).catch(() => caches.match('./')));
+    event.respondWith(caches.open(CACHE).then((c) => c.match('./')).then((hit) => hit ?? fetch(req)));
     return;
   }
-  event.respondWith(caches.match(req).then((hit) => {
-    const fresh = fetch(req).then((res) => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-      return res;
-    });
-    return hit ?? fresh;
+  event.respondWith(caches.open(CACHE).then(async (c) => {
+    const hit = await c.match(req);
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res.ok) c.put(req, res.clone());
+    return res;
   }));
 });

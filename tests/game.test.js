@@ -164,3 +164,17 @@ test('une progression stockée hostile ou abîmée est réparée', () => {
   assert.equal(p.streak, 0);
   assert.equal(p.lastDay, null);
 });
+
+test('score de résonance : somme des meilleurs accords, rejouer moins bien ne retire rien', async () => {
+  const G = await import('../public/src/game.js');
+  let p = G.freshProgress();
+  assert.equal(G.resonanceScore(p), 0);
+  p = G.recordTide(p, 0, 0, 0.92).progress;
+  assert.equal(G.resonanceScore(p), 92);
+  p = G.recordTide(p, 0, 0, 0.5).progress;
+  assert.equal(G.resonanceScore(p), 92);
+  p = G.recordTide(p, 0, 0, 0.97).progress;
+  p = G.recordDay(p, '2026-11-25', 0.81);
+  assert.equal(G.resonanceScore(p), 97 + 81);
+  assert.equal(G.resonanceScore(G.readProgress('{"best":"x","days":{"2026-01-01":9}}')), 0);
+});

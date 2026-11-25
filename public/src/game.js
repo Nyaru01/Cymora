@@ -332,6 +332,17 @@ export function recordDay(progress, date, score) {
   return p;
 }
 
+/**
+ * Score de résonance : la somme des meilleurs accords (en points, 100 par chant parfait) de chaque chant
+ * des marées et de chaque résonance du jour. Rejouer un chant ne compte que si l'on fait mieux.
+ */
+export function resonanceScore(progress) {
+  let total = 0;
+  for (const tide of progress.best ?? []) for (const v of tide) total += Math.round(clamp(v, 0, 1) * 100);
+  for (const v of Object.values(progress.days ?? {})) total += Math.round(clamp(v, 0, 1) * 100);
+  return total;
+}
+
 /** Série visible aujourd'hui : elle s'éteint si l'on a manqué hier. */
 export function liveStreak(progress, today) {
   if (!progress.lastDay) return 0;

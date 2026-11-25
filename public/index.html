@@ -22,6 +22,7 @@
     <canvas id="matter" class="scene__matter" tabindex="0" role="application" data-i18n-attr="aria-label:matter.label" aria-describedby="whisper"></canvas>
     <canvas id="ink" class="scene__ink" aria-hidden="true"></canvas>
     <p class="whisper" id="whisper" aria-live="polite"></p>
+    <p class="gain" id="gain" aria-hidden="true"></p>
     <div class="card" id="card" aria-live="polite"><p class="card__title" id="card-title"></p><p class="card__line" id="card-line"></p><p class="card__hint" id="card-hint"></p></div>
     <div class="fatal" id="fatal" role="alert" hidden></div>
   </main>
@@ -44,7 +45,8 @@
       <span class="pearls" id="pearls"></span>
     </button>
     <div class="bar__end">
-      <button type="button" class="pill" id="sound" aria-pressed="false" data-i18n="sound">Son</button>
+      <span class="score" id="score" role="status"><svg class="score__star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.9h7.2l-5.8 4.2 2.2 6.9L12 16.3l-5.8 4.2 2.2-6.9-5.8-4.2h7.2z" fill="currentColor"/></svg><span id="score-value">0</span><span class="score__saved" id="score-saved" aria-hidden="true">✓</span></span>
+      <button type="button" class="pill pill--icon" id="sound" aria-pressed="false"><svg class="sound__on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="sound__off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div id="lang"></div>
     </div>
   </header>
@@ -70,7 +72,8 @@
     <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
     <div class="threshold__actions">
       <button type="button" class="enter" id="begin"><span id="begin-label" data-i18n="begin">Commencer</span> <span class="enter__soft" data-i18n="withSound">avec le son</span></button>
-      <button type="button" class="enter enter--quiet" id="begin-quiet" data-i18n="quiet">En silence</button>
+      <!-- Compatibilité : l'ancienne version (encore en cache chez certains) cherche ce bouton au démarrage. -->
+      <button type="button" id="begin-quiet" hidden tabindex="-1" aria-hidden="true"></button>
     </div>
     <div class="threshold__more">
       <button type="button" class="link" id="go-daily"><span data-i18n="daily">La résonance du jour</span> <span class="link__badge" id="daily-badge"></span></button>
@@ -83,10 +86,23 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
+  <div class="update" id="update" role="dialog" aria-labelledby="update-title" aria-describedby="update-line" hidden>
+    <img class="update__logo" src="./icons/icon-192.png" alt="" width="192" height="192">
+    <div class="update__text">
+      <p class="update__title" id="update-title" data-i18n="update.title">Une nouvelle version de Cymora est prête</p>
+      <p class="update__line" id="update-line" data-i18n="update.line"></p>
+    </div>
+    <div class="update__actions">
+      <button type="button" class="enter enter--small" id="update-go" data-i18n="update.go">Mettre à jour</button>
+      <button type="button" class="link link--quiet" id="update-later" data-i18n="update.later">Plus tard</button>
+    </div>
+  </div>
+
   <dialog class="map" id="map" aria-labelledby="map-title">
     <form method="dialog">
       <h2 id="map-title" data-i18n="map.title">Ton voyage</h2>
       <p class="map__lede" data-i18n="map.lede"></p>
+      <p class="map__score" id="map-score"></p>
       <ol class="tides" id="tides"></ol>
       <div class="map__more">
         <button type="button" class="map__mode" id="map-daily"><span class="map__name" data-i18n="daily"></span><span class="map__state" id="map-daily-state"></span></button>

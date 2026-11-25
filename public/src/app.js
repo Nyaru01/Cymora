@@ -67,9 +67,43 @@ async function boot() {
   // Toutes les figures sont préparées pendant le chargement : plus aucun à-coup en jouant.
   await app.prepare((k) => splashProgress(0.2 + 0.8 * k));
   await openThreshold(began);
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => { /* hors ligne indisponible : l'app marche quand même */ });
-  }
+  if ('serviceWorker' in navigator && location.protocol === 'https:') watchUpdates();
+  // Demande au navigateur de ne pas effacer la progression quand l'appareil manque de place.
+  navigator.storage?.persist?.().catch(() => {});
+}
+
+/**
+ * Mises à jour : une nouvelle version s'installe en arrière-plan, puis un pop-up propose de l'ouvrir.
+ * Accepter recharge la page sur la nouvelle version ; « Plus tard » la garde pour la prochaine ouverture.
+ */
+async function watchUpdates() {
+  let reg;
+  try { reg = await navigator.serviceWorker.register('./sw.js'); } catch { return; } // l'app marche sans
+  const offer = (worker) => {
+    if (!worker || !navigator.serviceWorker.controller) return; // première installation : rien à proposer
+    const box = $('#update');
+    box.hidden = false;
+    requestAnimationFrame(() => box.classList.add('is-on'));
+    $('#update-go').onclick = () => {
+      $('#update-go').disabled = true;
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+      worker.postMessage('skip');
+    };
+    $('#update-later').onclick = () => { box.classList.remove('is-on'); setTimeout(() => { box.hidden = true; }, 500); };
+  };
+  if (reg.waiting) offer(reg.waiting);
+  reg.addEventListener('updatefound', () => {
+    const w = reg.installing;
+    w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
+  });
+  const check = () => reg.update().catch(() => {});
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  setInterval(check, 30 * 60 * 1000);
+}
+
+/** Vibration (téléphone) : de courtes impulsions, jamais insistantes. */
+function haptic(pattern) {
+  try { navigator.vibrate?.(pattern); } catch { /* pas de vibreur */ }
 }
 
 function splashProgress(k) {
@@ -138,7 +172,11 @@ class Cymora {
     this.phase = 'idle';
     this.progress = this.load();
     this.today = G.localDate();
+    this.sparks = [];
     this.relabel();
+    this.syncScore();
+    // Ceinture et bretelles : on sauvegarde aussi quand l'app passe en arrière-plan.
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
   }
 
   start() {
@@ -160,8 +198,58 @@ class Cymora {
     try { return G.readProgress(stored(STORE)); } catch { return G.freshProgress(); }
   }
 
+  /** Sauvegarde locale après chaque réponse ; une coche brève le confirme près du score. */
   save() {
-    try { localStorage.setItem(STORE, JSON.stringify(this.progress)); } catch { /* stockage indisponible : la progression vit le temps de la séance */ }
+    try {
+      localStorage.setItem(STORE, JSON.stringify(this.progress));
+      const mark = $('#score-saved');
+      mark.classList.remove('is-on');
+      void mark.offsetWidth; // relance l'animation
+      mark.classList.add('is-on');
+    } catch { /* stockage indisponible : la progression vit le temps de la séance */ }
+  }
+
+  /** Score de résonance affiché ; s'il augmente, il compte jusqu'à sa nouvelle valeur. */
+  syncScore(animate = false) {
+    const to = G.resonanceScore(this.progress);
+    const el = $('#score-value');
+    const from = Number(el.textContent) || 0;
+    $('#score').setAttribute('aria-label', t('score.label', { n: to }));
+    $('#map-score').textContent = `${t('score.map')} · ${to}`;
+    if (!animate || to <= from || reducedMotion) { el.textContent = String(to); return; }
+    const t0 = performance.now();
+    const tick = (now) => {
+      const k = Math.min(1, (now - t0) / 1200);
+      el.textContent = String(Math.round(from + (to - from) * (1 - (1 - k) ** 3)));
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    $('#score').classList.remove('is-up');
+    void $('#score').offsetWidth;
+    $('#score').classList.add('is-up');
+  }
+
+  /** Les points gagnés montent du centre de la plaque. */
+  showGain(points, pct) {
+    const el = $('#gain');
+    el.textContent = points > 0 ? `${t('score.gain', { n: points })}  ·  ${t('score.pct', { n: pct })}` : t('score.pct', { n: pct });
+    el.classList.remove('is-on');
+    void el.offsetWidth;
+    el.classList.add('is-on');
+  }
+
+  /** Confirmation sensible : vibration sur téléphone, frisson de la plaque à l'écran. */
+  feel(kind) {
+    if (kind === 'resonance') haptic([14, 60, 26]);
+    else if (kind === 'close') haptic(18);
+    else if (kind === 'far') haptic([8, 70, 8]);
+    else if (kind === 'done') haptic([20, 70, 20, 70, 40]);
+    else if (kind === 'touch') haptic(6);
+    if (kind === 'touch') return;
+    const scene = $('#scene');
+    scene.classList.remove('is-yes', 'is-no');
+    void scene.offsetWidth;
+    scene.classList.add(kind === 'far' ? 'is-no' : 'is-yes');
   }
 
   // ---------------------------------------------------------------- seuil et barre
@@ -176,7 +264,6 @@ class Cymora {
       then();
     };
     $('#begin').addEventListener('click', () => go(true, () => this.startTide(this.progress.tide)));
-    $('#begin-quiet').addEventListener('click', () => go(false, () => this.startTide(this.progress.tide)));
     $('#go-daily').addEventListener('click', () => go(true, () => this.startDaily()));
     $('#go-free').addEventListener('click', () => go(true, () => this.startFree()));
   }
@@ -192,13 +279,15 @@ class Cymora {
       const before = this.progress;
       this.progress = G.freshProgress();
       this.save();
+      this.syncScore();
       map.close();
-      this.toast(t('t.reset'), t('t.undo'), () => { this.progress = before; this.save(); this.relabel(); });
+      this.toast(t('t.reset'), t('t.undo'), () => { this.progress = before; this.save(); this.syncScore(); this.relabel(); });
       this.startTide(0);
     });
   }
 
   openMap() {
+    this.syncScore();
     const list = $('#tides');
     list.replaceChildren();
     G.TIDES.forEach((tide, k) => {
@@ -439,6 +528,7 @@ class Cymora {
   }
 
   judge(points) {
+    const before = G.resonanceScore(this.progress);
     const r = G.attune(this.motif, points);
     if (r.verdict === 'silent') {
       this.whisper(t('w.silent'), 2200);
@@ -463,6 +553,9 @@ class Cymora {
     this.relabel();
     this.whisper(t(r.verdict === 'resonance' ? 'w.resonance' : r.verdict === 'close' ? 'w.close' : 'w.far'), 3200);
     if (pass) this.pulse(r.verdict === 'resonance' ? 1 : 0.6);
+    this.showGain(G.resonanceScore(this.progress) - before, Math.round(r.score * 100));
+    this.syncScore(true);
+    this.feel(r.verdict);
     if (pass && this.audio.enabled) {
       const freqs = [...new Set(this.motif.notes.map((n) => G.degreeFreq(n.deg)))].sort((a, b) => a - b);
       this.audio.chord(freqs, { velocity: r.verdict === 'resonance' ? 0.45 : 0.3 });
@@ -482,6 +575,7 @@ class Cymora {
     if (next === 'tideDone') {
       this.showCard(t('card.done', { n: ROMAN[this.tideIdx] }), t(`after.${G.TIDES[this.tideIdx].id}`), '', 5200);
       this.pulse(1.4);
+      this.feel('done');
       return this.enterInterlude(5, () => this.startTide(this.tideIdx + 1));
     }
     if (next === 'replayDone') {
@@ -563,6 +657,7 @@ class Cymora {
       this.touchedAt ??= this.clock;
     }
     this.E.addWake(this.world, x, y, 0, 0, 0.05);
+    if (this.phase === 'turn') this.feel('touch');
   }
 
   moveTouch(x, y) {
@@ -577,6 +672,12 @@ class Cymora {
     if (tc.path.length > 900) tc.path.shift();
     const speed = Math.hypot(dx, dy);
     if (speed > 0.002) this.E.addWake(this.world, x, y, dx * 6, dy * 6, clamp(0.035 + speed * 2, 0.035, 0.08));
+    // Étincelles : le doigt laisse une poussière de lumière qui retombe doucement.
+    if (!reducedMotion && speed > 0.0015 && this.sparks.length < 160) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 0.02 + Math.random() * 0.05;
+      this.sparks.push({ x, y, vx: Math.cos(a) * v - dx * 2, vy: Math.sin(a) * v - dy * 2, at: this.clock, life: 0.6 + Math.random() * 0.7 });
+    }
   }
 
   endTouch() {
@@ -806,7 +907,11 @@ class Cymora {
     }
     this.rectCss = { x, y, size };
     document.body.style.setProperty('--field-cx', `${x + size / 2}px`);
-    document.body.style.setProperty('--field-bottom', `${Math.max(16, h - (y + size) + 18)}px`);
+    // Le murmure (« À toi », « En résonance ») se place sous la plaque ; sur téléphone en portrait,
+    // nettement plus bas, au milieu de l'espace libre, pour ne pas couvrir la figure.
+    const below = h - (y + size);
+    const bottom = wide ? below + 18 : below > 120 ? below * 0.42 : Math.max(12, below - 34);
+    document.body.style.setProperty('--field-bottom', `${Math.max(16, bottom)}px`);
     this.rect = { x: this.rectCss.x * dpr, y: this.rectCss.y * dpr, size: size * dpr };
     this.dpr = dpr;
     try {
@@ -839,20 +944,65 @@ class Cymora {
     g.clearRect(0, 0, this.inkCv.width, this.inkCv.height);
     const inks = this.inks ?? INKS.free;
     this.drawPlate(g, ox, oy, size, d, inks);
-    const line = (path, color, width, alpha, upto = path.length, dash = null) => {
+    const X = (p) => ox + p.x * size;
+    const Y = (p) => oy + p.y * size;
+    // Courbe lissée (milieux reliés par des quadratiques) : plus de cassures entre les points du pointeur.
+    const smooth = (path, from, to) => {
+      g.moveTo(X(path[from]), Y(path[from]));
+      for (let i = from + 1; i < to - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        g.quadraticCurveTo(X(a), Y(a), (X(a) + X(b)) / 2, (Y(a) + Y(b)) / 2);
+      }
+      g.lineTo(X(path[to - 1]), Y(path[to - 1]));
+    };
+    /**
+     * Ruban de lumière : un halo large, un trait coloré en dégradé (de la couleur vers le violet),
+     * un cœur blanc. Avec « taper », il s'affine vers la queue comme une comète.
+     */
+    const line = (path, color, width, alpha, upto = path.length, dash = null, taper = false) => {
       if (upto < 2 || alpha <= 0.01) return;
+      const a = path[0];
+      const b = path[upto - 1];
+      const grad = g.createLinearGradient(X(a), Y(a), X(b) + 0.01, Y(b));
+      grad.addColorStop(0, CHORUS_INK);
+      grad.addColorStop(1, color);
       g.save();
-      g.strokeStyle = color;
-      g.globalAlpha = alpha;
-      g.lineWidth = width * d;
       g.lineCap = 'round';
       g.lineJoin = 'round';
-      g.shadowColor = color;
-      g.shadowBlur = 16 * d;
       if (dash) g.setLineDash(dash.map((v) => v * d));
+      g.strokeStyle = grad;
+      g.globalAlpha = alpha * 0.16;
+      g.lineWidth = width * 5 * d;
       g.beginPath();
-      g.moveTo(ox + path[0].x * size, oy + path[0].y * size);
-      for (let i = 1; i < upto; i++) g.lineTo(ox + path[i].x * size, oy + path[i].y * size);
+      smooth(path, 0, upto);
+      g.stroke();
+      g.globalAlpha = alpha;
+      g.shadowColor = color;
+      g.shadowBlur = 14 * d;
+      if (taper && upto > 12) {
+        const chunks = 10;
+        for (let c = 0; c < chunks; c++) {
+          const from = Math.floor(((upto - 1) * c) / chunks);
+          const to = Math.min(upto, Math.floor(((upto - 1) * (c + 1)) / chunks) + 2);
+          g.lineWidth = width * d * (0.3 + (0.9 * (c + 1)) / chunks);
+          g.globalAlpha = alpha * (0.35 + (0.65 * (c + 1)) / chunks);
+          g.beginPath();
+          smooth(path, from, to);
+          g.stroke();
+        }
+      } else {
+        g.lineWidth = width * d;
+        g.beginPath();
+        smooth(path, 0, upto);
+        g.stroke();
+      }
+      g.shadowBlur = 0;
+      g.strokeStyle = '#ffffff';
+      g.globalAlpha = alpha * 0.7;
+      g.lineWidth = Math.max(0.6, width * 0.32) * d;
+      g.beginPath();
+      smooth(path, taper ? Math.floor(upto * 0.4) : 0, upto);
       g.stroke();
       g.restore();
     };
@@ -875,7 +1025,7 @@ class Cymora {
         let upto = 0;
         while (upto < this.trace.length && this.trace[upto].at <= time) upto++;
         const alpha = { always: 0.85, call: 0.8, glimpse: 0.22, none: 0 }[guide];
-        line(this.trace, inks.guide, 2, alpha, upto);
+        line(this.trace, inks.guide, 2.4, alpha, upto, null, true);
         if (upto && upto < this.trace.length && guide !== 'none') bead(this.trace[upto - 1], inks.guide, 4.5, 0.9);
       } else if (this.phase === 'turn') {
         let alpha = { always: 0.32, call: 0.42, glimpse: 0, none: 0 }[guide];
@@ -886,7 +1036,7 @@ class Cymora {
       } else if (this.phase === 'echo' && this.result.score >= G.PASS) {
         const since = this.clock - this.phaseAt;
         const fade = clamp(1 - (since - 2.6) / 1.5, 0, 1);
-        line(this.trace, inks.guide, 2.2, 0.75 * fade);
+        line(this.trace, inks.guide, 2.6, 0.8 * fade);
       }
     }
 
@@ -903,12 +1053,45 @@ class Cymora {
       line(this.play.trace, inks.guide, 1.8, 0.7, upto);
     }
 
-    if (this.touch) line(this.touch.path, inks.stroke, 1.8, 0.7);
+    if (this.touch) {
+      line(this.touch.path, inks.stroke, 2.6, 0.9, this.touch.path.length, null, true);
+      const head = this.touch.path[this.touch.path.length - 1];
+      const r = 16 * d;
+      const glow = g.createRadialGradient(X(head), Y(head), 0, X(head), Y(head), r);
+      glow.addColorStop(0, 'rgba(255,255,255,0.95)');
+      glow.addColorStop(0.25, inks.stroke);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      g.save();
+      g.globalAlpha = 0.85;
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(X(head), Y(head), r, 0, TAU);
+      g.fill();
+      g.restore();
+    }
     else if (this.fading) {
       const age = this.clock - this.fading.at;
       const life = this.phase === 'echo' ? 3.6 : 2.2;
       if (age > life) this.fading = null;
-      else line(this.fading.path, this.fading.color, 1.8, 0.65 * (1 - age / life));
+      else line(this.fading.path, this.fading.color, 2.4, 0.8 * (1 - age / life), this.fading.path.length, null, true);
+    }
+
+    // Étincelles du geste.
+    if (this.sparks.length) {
+      g.save();
+      g.fillStyle = inks.stroke;
+      this.sparks = this.sparks.filter((sp) => this.clock - sp.at < sp.life);
+      for (const sp of this.sparks) {
+        const age = (this.clock - sp.at) / sp.life;
+        const dt = this.clock - sp.at;
+        const x = sp.x + sp.vx * dt;
+        const y = sp.y + sp.vy * dt + 0.02 * dt * dt;
+        g.globalAlpha = (1 - age) * 0.9;
+        g.beginPath();
+        g.arc(ox + x * size, oy + y * size, (1.4 - age) * d, 0, TAU);
+        g.fill();
+      }
+      g.restore();
     }
 
     if (document.activeElement === this.cv && this.keys.size + (this.touch?.id === 'key' ? 1 : 0)) {
@@ -976,7 +1159,8 @@ class Cymora {
   syncSound() {
     const b = $('#sound');
     b.setAttribute('aria-pressed', String(this.audio.enabled));
-    b.textContent = t(this.audio.enabled ? 'sound' : 'soundOff');
+    b.setAttribute('aria-label', t(this.audio.enabled ? 'sound.on' : 'sound.off'));
+    b.title = t(this.audio.enabled ? 'sound.on' : 'sound.off');
   }
 
   showCard(title, text, hint = '', ms = 6000) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorld, stepWorld, addNode, removeNode, moveNode, resetParticles, serializeWorld, deserializeWorld, DEFAULTS, velocityAt, addWake, getMetrics, sampleLight } from '../src/engine.js';
+import { createWorld, stepWorld, addNode, removeNode, moveNode, resetParticles, serializeWorld, deserializeWorld, DEFAULTS, velocityAt, addWake, getMetrics, sampleLight } from '../public/src/engine.js';
 test('same seed gives identical trajectories', () => { const a=createWorld(42), b=createWorld(42); for(let i=0;i<100;i++) { stepWorld(a,.016); stepWorld(b,.016); } assert.deepEqual(a.particles,b.particles); });
 test('long simulation stays bounded and finite', () => { const w=createWorld(); for(let i=0;i<1500;i++) stepWorld(w,.05,{...DEFAULTS,speed:3}); for(const p of w.particles) { assert.ok(Number.isFinite(p.x)&&Number.isFinite(p.y)); assert.ok(p.x>=0&&p.x<=1&&p.y>=0&&p.y<=1); } });
 test('pause delta does not move particles', () => { const w=createWorld(), p=w.particles.map(p=>[p.x,p.y]); stepWorld(w,0); assert.deepEqual(w.particles.map(p=>[p.x,p.y]),p); });

@@ -15,12 +15,11 @@ test('public server works without Git and serves only public resources',async()=
  const origin=`http://127.0.0.1:${port}`;
  try{
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw Error('Server exited')} ),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Startup timeout')),5000);timer.unref()})]);
-  assert.deepEqual(await (await fetch(origin+'/health')).json(),{status:'ok',edition:5});
-  for(const path of ['/','/atelier/','/rapports/','/oeuvres/jardin/','/oeuvres/nocturne/','/oeuvres/resonance/','/oeuvres/intervalle/','/shared/i18n.js','/favicon.svg']){
+  assert.deepEqual(await (await fetch(origin+'/health')).json(),{status:'ok',app:'resonance'});
+  for(const path of ['/','/src/app.js','/src/game.js','/shared/i18n.js','/favicon.svg','/manifest.json','/sw.js']){
    const r=await fetch(origin+path);assert.equal(r.status,200,path);assert.equal(r.headers.get('x-content-type-options'),'nosniff');assert.match(r.headers.get('content-security-policy'),/default-src 'self'/);assert.doesNotMatch(r.headers.get('content-security-policy'),/unsafe-inline|unsafe-eval/);
   }
   for(const path of ['/.git/config','/.agents/CODEX.md','/.runtime/server.json','/PROJECT.md','/server.mjs','/package.json','/.env','/private.txt','/scripts/archives.mjs','/archives/v2/'])assert.equal((await fetch(origin+path)).status,404,path);
-  assert.equal((await fetch(origin+'/oeuvres/nocturne',{redirect:'manual'})).status,308);
   const r=await fetch(origin+'/'),etag=r.headers.get('etag');assert.ok(etag);assert.equal((await fetch(origin+'/',{headers:{'If-None-Match':etag}})).status,304);
   assert.equal((await fetch(origin+'/',{method:'HEAD'})).status,200);assert.equal((await fetch(origin+'/',{method:'POST'})).status,405);assert.equal((await fetch(origin+'/__stop',{method:'POST'})).status,403);
   const exit=once(child,'exit');assert.equal((await fetch(origin+'/__stop',{method:'POST',headers:{'X-Pelagic-Stop':token}})).status,202);assert.equal((await exit)[0],0);

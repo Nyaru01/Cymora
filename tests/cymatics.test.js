@@ -1,7 +1,7 @@
 // Matière modale — auteur : CLAUDE. Le geste doit réellement dessiner une figure.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, PITCH_HIGH, PITCH_LOW, applyCymatics, buildField, gestureFreq, gradPsi, modeIndex, nodalSegments, psi } from '../src/cymatics.js';
+import { MODES, PITCH_HIGH, PITCH_LOW, applyCymatics, buildField, gestureFreq, gradPsi, modeIndex, nodalSegments, psi } from '../public/src/cymatics.js';
 
 const packed = (n, seed = 3) => {
   let s = seed;

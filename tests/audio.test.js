@@ -1,7 +1,7 @@
 // Sonification V2 (sans Web Audio) — auteur : CLAUDE.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SCALES, VOICES, canonicalScale, canonicalVoice, createAudio, noteName, pickRecordingType, pitchForDepth, scaleSteps } from '../src/audio.js';
+import { SCALES, VOICES, canonicalScale, canonicalVoice, createAudio, noteName, pickRecordingType, pitchForDepth, scaleSteps } from '../public/src/audio.js';
 
 test('les balises hautes sonnent plus aigu que les profondes, dans chaque gamme', () => {
   for (const scale of Object.keys(SCALES)) {

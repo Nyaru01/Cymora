@@ -9,7 +9,7 @@ if ($nodeMajor -lt 22) { throw 'Node.js 22 ou supérieur est requis.' }
 if (Test-Path -LiteralPath $pidFile) {
     $saved = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
     $existing = Get-Process -Id $saved.pid -ErrorAction SilentlyContinue
-    if ($existing -and $existing.ProcessName -eq 'node' -and $existing.StartTime.ToUniversalTime().Ticks.ToString() -eq $saved.started) { Write-Host 'PELAGIC est déjà lancé : http://127.0.0.1:4173'; return }
+    if ($existing -and $existing.ProcessName -eq 'node' -and $existing.StartTime.ToUniversalTime().Ticks.ToString() -eq $saved.started) { Write-Host 'Résonance est déjà lancée : http://127.0.0.1:4173'; return }
 }
 $stopToken = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
 $previousPort = $env:PORT
@@ -34,6 +34,5 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
     Start-Sleep -Milliseconds 250
 }
 if (-not $ready) { throw 'Le serveur local ne répond pas. Consulter .runtime/error.log, puis STOP.ps1.' }
-Write-Host 'QUATRE est prêt : http://127.0.0.1:4173/'
-Write-Host 'INTERVALLE : http://127.0.0.1:4173/oeuvres/intervalle/'
+Write-Host 'Résonance est prête : http://127.0.0.1:4173/'
 Write-Host 'Pour arrêter : .\STOP.ps1'

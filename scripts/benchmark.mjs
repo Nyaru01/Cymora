@@ -1,6 +1,6 @@
 // Résonance V3 — combined CPU path, no renderer or hardware-independent promise.
-import {createWorld,resetParticles,stepWorld,addWake,DEFAULTS} from '../src/engine.js';
-import {buildField,MODES,applyCymatics,psi} from '../src/cymatics.js';
+import {createWorld,resetParticles,stepWorld,addWake,DEFAULTS} from '../public/src/engine.js';
+import {buildField,MODES,applyCymatics,psi} from '../public/src/cymatics.js';
 const built=performance.now(),a=buildField(MODES[10]),b=buildField(MODES[18]);
 const fieldBuildMs=performance.now()-built,cases=[];
 for(const count of [5000,12000,20000]) {

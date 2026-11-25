@@ -1,6 +1,71 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f3f0e8"><meta name="description" content="Quatre œuvres interactives, une création à deux. Des courants de PELAGIC aux écritures d’INTERVALLE. Gratuit, sans compte, français et anglais."><meta property="og:title" content="QUATRE — PELAGIC / INTERVALLE"><meta property="og:description" content="Four interactive works. Two creative agents. Discover, play, then explore how they were made."><meta property="og:type" content="website"><meta property="og:image" content="./share.png"><title>QUATRE — PELAGIC / INTERVALLE</title><link rel="icon" href="./favicon.svg"><link rel="stylesheet" href="./exposition.css"></head><body>
-<a class="skip" href="#gallery" data-i18n="skip">Accéder aux œuvres</a>
-<header class="topbar"><a class="brand" href="./" aria-label="QUATRE"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>QUATRE.</a><div class="intro"><strong data-i18n="intro">Quatre œuvres à jouer.</strong><span data-i18n="subtitle">Une histoire de création à deux.</span></div><nav class="secondary" aria-label="Publication"><a href="./atelier/" data-i18n="making">La fabrication</a><a href="./rapports/" data-i18n="reports">Les deux regards</a><a href="https://github.com/Nyaru01/Duo" rel="noopener" target="_blank">GitHub</a></nav><div class="head-actions"><button id="share" data-i18n="share">Partager</button><button id="about" data-i18n="about">À propos</button><div id="language"></div></div></header>
-<main id="gallery" class="gallery" tabindex="0" aria-label="Exposition"><noscript><p>QUATRE / Four interactive works. JavaScript runs these local generative experiences.</p><a href="./oeuvres/jardin/">Jardin</a> · <a href="./oeuvres/nocturne/">Nocturne</a> · <a href="./oeuvres/resonance/">Résonance</a> · <a href="./oeuvres/intervalle/">Intervalle</a></noscript></main>
-<footer class="bottom"><nav id="chapters" aria-label="Œuvres"></nav><div class="paging"><button id="motion" aria-pressed="false" data-i18n="pause">Suspendre les études</button><button id="previous" aria-label="Précédent">‹</button><button id="next" aria-label="Suivant">›</button></div></footer>
-<dialog id="cartel" aria-labelledby="cartel-title"><div class="dialog-head"><span id="cartel-tag"></span><form method="dialog"><button data-i18n="close">Fermer</button></form></div><h2 id="cartel-title"></h2><div id="cartel-content"></div></dialog><output id="status" role="status" aria-live="polite"></output><script type="module" src="./exposition.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Résonance — the matter sings, you answer with a gesture. A calm musical game, free, without account. / La matière chante, tu lui réponds d’un geste. Un jeu musical apaisé, gratuit, sans compte.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07060f">
+  <title>Résonance</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body data-state="threshold" data-tide="see">
+  <main class="scene" id="scene">
+    <canvas id="matter" class="scene__matter" tabindex="0" role="application" data-i18n-attr="aria-label:matter.label" aria-describedby="whisper"></canvas>
+    <canvas id="ink" class="scene__ink" aria-hidden="true"></canvas>
+    <p class="whisper" id="whisper" aria-live="polite"></p>
+    <div class="card" id="card" aria-live="polite"><p class="card__title" id="card-title"></p><p class="card__line" id="card-line"></p></div>
+    <div class="fatal" id="fatal" role="alert" hidden></div>
+  </main>
+
+  <header class="bar" data-i18n-attr="aria-label:bar.label">
+    <button type="button" class="bar__where" id="where" aria-haspopup="dialog">
+      <span class="bar__label" id="where-label"></span>
+      <span class="pearls" id="pearls"></span>
+    </button>
+    <div class="bar__end">
+      <button type="button" class="pill" id="sound" aria-pressed="false" data-i18n="sound">Son</button>
+      <div id="lang"></div>
+    </div>
+  </header>
+
+  <section class="threshold" id="threshold" aria-labelledby="title">
+    <h1 class="threshold__title" id="title">Résonance</h1>
+    <p class="threshold__line" data-i18n="tagline">La matière chante. Réponds-lui.</p>
+    <div class="threshold__actions">
+      <button type="button" class="enter" id="begin"><span id="begin-label" data-i18n="begin">Commencer</span> <span class="enter__soft" data-i18n="withSound">avec le son</span></button>
+      <button type="button" class="enter enter--quiet" id="begin-quiet" data-i18n="quiet">En silence</button>
+    </div>
+    <div class="threshold__more">
+      <button type="button" class="link" id="go-daily"><span data-i18n="daily">La résonance du jour</span> <span class="link__badge" id="daily-badge"></span></button>
+      <button type="button" class="link" id="go-free" data-i18n="free">Improviser</button>
+    </div>
+    <p class="threshold__how" data-i18n="how"></p>
+    <p class="threshold__note" data-i18n="note"></p>
+  </section>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <dialog class="map" id="map" aria-labelledby="map-title">
+    <form method="dialog">
+      <h2 id="map-title" data-i18n="map.title">Ton voyage</h2>
+      <p class="map__lede" data-i18n="map.lede"></p>
+      <ol class="tides" id="tides"></ol>
+      <div class="map__more">
+        <button type="button" class="map__mode" id="map-daily"><span class="map__name" data-i18n="daily"></span><span class="map__state" id="map-daily-state"></span></button>
+        <button type="button" class="map__mode" id="map-free"><span class="map__name" data-i18n="free"></span><span class="map__state" data-i18n="card.freeLine"></span></button>
+      </div>
+      <div class="map__foot">
+        <button type="button" class="link link--quiet" id="reset" data-i18n="map.reset">Effacer ma progression</button>
+        <span class="map__privacy" data-i18n="map.privacy"></span>
+      </div>
+      <button class="enter enter--small" value="close" data-i18n="map.close">Revenir</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

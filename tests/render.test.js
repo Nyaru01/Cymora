@@ -1,7 +1,7 @@
 // Fonctions pures du renderer V2 — auteur : CLAUDE.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createObjectView, createRenderer, fillSegments, speedToT } from '../src/render.js';
+import { createObjectView, createRenderer, fillSegments, speedToT } from '../public/src/render.js';
 
 test('speedToT est monotone, borné et robuste', () => {
   assert.equal(speedToT(0), 0);

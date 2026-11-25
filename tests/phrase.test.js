@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizePhrase,composeAnswer,createDialogue,quantizeFrequency} from '../src/phrase.js';
+import {normalizePhrase,composeAnswer,createDialogue,quantizeFrequency} from '../public/src/phrase.js';
 const samples=()=>Array.from({length:12},(_,i)=>({t:i*.15,x:.15+i*.05,y:.2+i*.04,freq:500-i*25,energy:.45}));
 const raw=()=>({id:'p1',samples:samples()});
 test('a gesture closes only after silence, answers once, then returns the floor',()=>{

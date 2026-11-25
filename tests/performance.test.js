@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createWorld,resetParticles,stepWorld,getMetrics,DEFAULTS,velocityAt} from '../src/engine.js';
+import {createWorld,resetParticles,stepWorld,getMetrics,DEFAULTS,velocityAt} from '../public/src/engine.js';
 test('20000 particle simulation keeps bounded typed buffers and reports measured step budget',t=>{
   const w=createWorld(17);resetParticles(w,20000);
   for(let i=0;i<20;i++)stepWorld(w,1/60);

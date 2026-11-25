@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {serializeImprint,deserializeImprint,restoreDialogue} from '../src/imprint.js';
-import {composeAnswer} from '../src/phrase.js';
+import {serializeImprint,deserializeImprint,restoreDialogue} from '../public/src/imprint.js';
+import {composeAnswer} from '../public/src/phrase.js';
 const phrase={id:'p1',samples:[{t:0,x:.2,y:.3,freq:330,energy:.5},{t:.8,x:.6,y:.7,freq:220,energy:.3}]};
 test('an imprint roundtrip regenerates the same musical answer',()=>{
   const text=serializeImprint({seed:73,phrases:[phrase]});const data=deserializeImprint(text);

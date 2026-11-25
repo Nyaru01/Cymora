@@ -45,11 +45,11 @@ const server=http.createServer(async(req,res)=>{
   try{pathname=new URL(req.url,'http://localhost').pathname;}catch{return error(400,'Requête invalide.','Invalid request.');}
   if(pathname==='/health'){
     res.writeHead(200,{'Content-Type':types.json,'Cache-Control':'no-store'});
-    res.end(req.method==='HEAD'?undefined:JSON.stringify({status:'ok',edition:5}));return;
+    res.end(req.method==='HEAD'?undefined:JSON.stringify({status:'ok',app:'resonance'}));return;
   }
   if(!assets.has(pathname)&&assets.has(pathname+'/')){res.writeHead(308,{Location:pathname+'/' + (new URL(req.url,'http://localhost')).search});res.end();return;}
   const asset=assets.get(pathname);
-  if(!asset)return error(404,'Page introuvable. Retour à l’exposition : /','Page not found. Return to the exhibition: /');
+  if(!asset)return error(404,'Page introuvable. Retour à Résonance : /','Page not found. Return to Résonance: /');
   try{
     const body=await readFile(asset),extension=fileURLToPath(asset).split('.').pop();
     if(extension==='html'){
@@ -64,5 +64,5 @@ const server=http.createServer(async(req,res)=>{
 });
 server.requestTimeout=15000;server.headersTimeout=10000;
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'Port already in use.':'Server failed to start.');process.exitCode=1;});
-server.listen(port,host,()=>console.log(`QUATRE http://${host}:${port}`));
+server.listen(port,host,()=>console.log(`Résonance http://${host}:${port}`));
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.close(()=>process.exit(0));server.closeIdleConnections();});

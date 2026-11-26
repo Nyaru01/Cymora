@@ -28,6 +28,7 @@ export const TIDES = Object.freeze([
   { id: 'remember', notes: [4, 5], guide: 'call', span: 4 },
   { id: 'listen', notes: [3, 5], guide: 'glimpse', span: 5 },
   { id: 'pulse', notes: [4, 6], guide: 'always', span: 4, pulse: true },
+  { id: 'resonate', notes: [4, 6], guide: 'call', span: 5 }, // VI : tous les gestes ensemble
 ]);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -116,7 +117,103 @@ export function tideMotif(tide, index) {
   const [a, b] = t.notes;
   const count = a + Math.round(((b - a) * clamp(index, 0, MOTIFS_PER_TIDE - 1)) / (MOTIFS_PER_TIDE - 1));
   if (t.pulse) return pulseMotif(index, `tide:${t.id}`); // chapitre V : chaque note sur un battement
-  return withHolds(motif(hash(`tide:${t.id}:${index}`), count, t.span), tideHolds(tide, index));
+  if (t.id === 'resonate' && index === 3) return pulseMotif(index, `tide:${t.id}`); // VI : un chant en mesure
+  const base = motif(hash(`tide:${t.id}:${index}`), count, t.span);
+  const glides = tideGlides(tide, index);
+  const rests = tideRests(tide, index);
+  // Sans glissade ni silence, le chant reste exactement celui d'avant (les perles gagnées gardent leur sens).
+  if (!glides && !rests) return withHolds(base, tideHolds(tide, index));
+  return compose(base, tideHolds(tide, index), glides, rests);
+}
+
+/** Glissades dans l'aventure : apprises au chapitre III, rappelées au IV, mêlées au VI. */
+export function tideGlides(tide, index) {
+  const id = TIDES[tide]?.id;
+  if (id === 'remember') return index >= 1 ? 1 : 0;
+  if (id === 'listen') return index >= 3 ? 1 : 0;
+  if (id === 'resonate') return index === 0 || index === 1 || index === 4 ? 1 : 0;
+  return 0;
+}
+
+/** Silences dans l'aventure : appris au chapitre IV (écouter, c'est aussi se taire), mêlés au VI. */
+export function tideRests(tide, index) {
+  const id = TIDES[tide]?.id;
+  if (id === 'listen') return index >= 1 ? 1 : 0;
+  if (id === 'resonate') return index === 1 || index === 2 || index === 4 ? 1 : 0;
+  return 0;
+}
+
+/**
+ * Compose un chant à partir d'un motif : notes tenues, glissades et silence, sans qu'une note porte
+ * deux gestes à la fois (et jamais de glissade juste après un silence).
+ */
+function compose(m, holds, glides, rests) {
+  const n = m.notes.length;
+  const r = rng(m.seed ^ 0xc0de);
+  const notes = m.notes.map((x) => ({ deg: x.deg, dur: x.dur }));
+  const restAt = rests && n >= 3 ? Math.ceil(n / 2) : -1;
+  const free = () => notes.map((_, k) => k).filter((k) => k > 0 && k !== restAt && !notes[k].hold && !notes[k].glide);
+  const pick = () => { const f = free(); return f.length ? f[Math.floor(r() * f.length)] : -1; };
+  for (let i = 0; i < glides; i++) {
+    const k = pick();
+    if (k < 0) break;
+    const prev = notes[k - 1].deg;
+    if (Math.abs(notes[k].deg - prev) < 3) notes[k].deg = prev + (prev <= 5 ? 4 : -4);
+    notes[k] = { ...notes[k], glide: SLIDE, dur: round(SLIDE + 0.45, 3) };
+  }
+  for (let i = 0; i < holds; i++) {
+    const k = pick();
+    if (k < 0) break;
+    notes[k] = { ...notes[k], hold: true, dur: round(HOLD + 0.6, 3) };
+  }
+  if (restAt > 0) notes[restAt] = { ...notes[restAt], rest: REST };
+  return { seed: m.seed, ...retime(notes) };
+}
+
+/** Tutoriel des glissades : une note, puis une longue glissade vers une note lointaine. */
+export function glideLesson() {
+  return { seed: 0, ...retime([{ deg: 3, dur: 0.7 }, { deg: 7, glide: SLIDE, dur: round(SLIDE + 0.45, 3) }]) };
+}
+
+/** Tutoriel du silence : deux notes, un silence, deux notes. */
+export function restLesson() {
+  return { seed: 0, ...retime([{ deg: 5, dur: 0.7 }, { deg: 7, dur: 0.7 }, { deg: 5, dur: 0.7, rest: REST }, { deg: 3, dur: 0.8 }]) };
+}
+
+/**
+ * Accord du moment, pendant qu'on trace : on compare le geste au début du chant (même mesure que le
+ * score final, rythme élastique) en essayant plusieurs longueurs de début autour de l'avancée supposée.
+ * @returns {number|null} 0..1, ou null si le geste est encore trop court
+ */
+export function liveAccord(m, gesture, tempo = 1) {
+  const pts = (gesture ?? []).filter((p) => p && Number.isFinite(p.t) && Number.isFinite(p.y));
+  if (pts.length < 6) return null;
+  const t0 = pts[0].t;
+  const span = pts.at(-1).t - t0;
+  if (span < 0.3) return null;
+  const even = [];
+  let j = 0;
+  for (let i = 0; i < 48; i++) {
+    const t = t0 + (i / 47) * span;
+    while (j + 1 < pts.length && pts[j + 1].t < t) j++;
+    const a = pts[j];
+    const b = pts[Math.min(pts.length - 1, j + 1)];
+    const u = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0;
+    even.push(yDegree(a.y + (b.y - a.y) * u));
+  }
+  const answer = resample(even, 32);
+  const est = clamp(span / tempo / Math.max(0.1, m.duration), 0.1, 1);
+  let best = Infinity;
+  for (let f = est - 0.3; f <= est + 0.3 + 1e-9; f += 0.1) {
+    if (f < 0.08 || f > 1.05) continue;
+    const end = Math.min(1, f) * m.duration;
+    const target = resample(Array.from({ length: 48 }, (_, i) => motifDegreeAt(m, (i / 47) * end)), 32);
+    for (const shift of [0, -1, 1]) {
+      const d = dtw(target, answer.map((v) => v - shift)) + 0.32 * Math.abs(shift);
+      if (d < best) best = d;
+    }
+  }
+  return round(clamp(1 - best / 1.5, 0, 1), 3);
 }
 
 /** Atelier « Tenir » : temps (s) pendant lequel le doigt doit rester sur une note cerclée. */
@@ -162,6 +259,110 @@ export function withHolds(m, count) {
     return out;
   });
   return { seed: m.seed, notes, duration: round(at - 0.1, 3) };
+}
+
+/** Atelier « Glisser » : durée (s) d'une longue glissade vers une note. */
+export const SLIDE = 1.5;
+/** Atelier « Silence » : durée (s) du silence au milieu du chant. */
+export const REST = 1.2;
+
+/** Recalcule les instants des notes à partir de leurs durées (et des silences `rest` avant une note). */
+function retime(notes) {
+  let at = 0;
+  const out = notes.map((n) => {
+    at += n.rest ?? 0;
+    const o = { ...n, at: round(at, 3) };
+    at += n.dur + 0.1;
+    return o;
+  });
+  return { notes: out, duration: round(at - 0.1, 3) };
+}
+
+/**
+ * Un chant de l'atelier « Glisser » : une note (deux dès le troisième chant) arrive par une longue
+ * glissade depuis la précédente, sur au moins trois degrés. Jamais la première note.
+ */
+export function glideMotif(index) {
+  const i = Math.max(0, Math.floor(index));
+  const m = motif(hash(`glide:${i}`), 3 + Math.min(2, i), 5);
+  const r = rng(m.seed ^ 0x611de);
+  const last = m.notes.length - 1;
+  const picks = new Set([1 + Math.floor(r() * last)]);
+  if (i >= 2 && last >= 3) picks.add([...picks][0] === last ? 1 : last);
+  const notes = m.notes.map((n) => ({ deg: n.deg, dur: n.dur }));
+  for (const k of picks) {
+    const prev = notes[k - 1].deg;
+    if (Math.abs(notes[k].deg - prev) < 3) notes[k].deg = prev + (prev <= 5 ? 4 : -4); // une vraie glissade
+    notes[k] = { ...notes[k], glide: SLIDE, dur: round(SLIDE + 0.45, 3) };
+  }
+  return { seed: m.seed, ...retime(notes) };
+}
+
+/** Un chant de l'atelier « Silence » : deux phrases séparées par un silence où l'on lève le doigt. */
+export function restMotif(index) {
+  const i = Math.max(0, Math.floor(index));
+  const m = motif(hash(`rest:${i}`), 4 + Math.min(2, i), 4);
+  const k = Math.ceil(m.notes.length / 2); // la seconde phrase commence à cette note
+  const notes = m.notes.map((n, j) => ({ deg: n.deg, dur: n.dur, ...(j === k ? { rest: REST } : {}) }));
+  return { seed: m.seed, ...retime(notes) };
+}
+
+/**
+ * Justesse des glissades : pour chaque note glissée, la régularité du geste entre la note d'avant
+ * et celle-ci (sans retour en arrière ni saut) et son allure (ni pressée ni traînante).
+ * @param {object} m motif
+ * @param {{t:number,y:number}[]} stroke geste (temps, hauteur à l'écran)
+ * @param {number[]} times instants où chaque note a été atteinte
+ */
+export function glideOf(m, stroke, times, tempo = 1) {
+  const ref = reachTimes(m);
+  const out = [];
+  m.notes.forEach((n, k) => {
+    if (!n.glide || k === 0) return;
+    const t0 = times[k - 1];
+    const t1 = times[k];
+    if (t0 == null || t1 == null) { out.push({ k, smooth: 0, pace: 0, ratio: 0 }); return; }
+    const dir = Math.sign(n.deg - m.notes[k - 1].deg) || 1;
+    let forward = 0;
+    let total = 0;
+    let prev = null;
+    for (const p of stroke) {
+      if (p.t < t0 || p.t > t1) continue;
+      const deg = yDegree(p.y);
+      if (prev != null) { const d = deg - prev; total += Math.abs(d); if (d * dir > 0) forward += Math.abs(d); }
+      prev = deg;
+    }
+    const smooth = total > 0 ? clamp(forward / total, 0, 1) : 1;
+    const ratio = (t1 - t0) / Math.max(0.05, (ref[k] - ref[k - 1]) * tempo);
+    const pace = clamp(1 - Math.max(0, Math.abs(ratio - 1) - 0.15) * 2.5, 0, 1); // la lenteur fait le geste : on ne la brade pas
+    out.push({ k, smooth: round(smooth, 3), pace: round(pace, 3), ratio: round(ratio, 3) });
+  });
+  if (!out.length) return { score: 1, feedback: null, glides: out };
+  const score = out.reduce((a, g) => a + 0.5 * g.smooth + 0.5 * g.pace, 0) / out.length;
+  const worst = out.reduce((a, g) => (0.5 * g.smooth + 0.5 * g.pace < 0.5 * a.smooth + 0.5 * a.pace ? g : a));
+  const feedback = worst.ratio === 0 ? 'missed' : worst.ratio < 0.8 ? 'fast' : worst.smooth < 0.8 ? 'shaky' : worst.ratio > 1.35 ? 'slow' : null;
+  return { score: round(score, 3), feedback, glides: out };
+}
+
+/**
+ * Justesse des silences : le doigt doit se lever pendant chaque silence, à peu près le temps du silence.
+ * @param {object} m motif
+ * @param {number[]} lifts durées (s) des levers de doigt mesurés, dans l'ordre
+ */
+export function restOf(m, lifts, tempo = 1) {
+  const rests = m.notes.filter((n) => n.rest).map((n) => n.rest * tempo);
+  if (!rests.length) return { score: 1, feedback: null };
+  let sum = 0;
+  let feedback = null;
+  rests.forEach((want, i) => {
+    const got = lifts[i];
+    if (got == null) { feedback ??= 'none'; return; }
+    const ratio = got / want;
+    sum += clamp(1 - Math.max(0, Math.abs(ratio - 1) - 0.35) * 1.5, 0, 1);
+    if (ratio < 0.5) feedback ??= 'short';
+    else if (ratio > 2) feedback ??= 'long';
+  });
+  return { score: round(sum / rests.length, 3), feedback };
 }
 
 /** Atelier « Pulsation » : durée d'un temps (s). */
@@ -258,9 +459,11 @@ export function motifDegreeAt(m, t) {
   let k = 0;
   while (k + 1 < notes.length && notes[k + 1].at <= t) k++;
   const cur = notes[k];
-  if (k === 0 || t - cur.at > GLIDE) return cur.deg;
+  // Une note « glissée » (atelier Glisser) arrive par une longue glissade au lieu d'un court glissando.
+  const glide = cur.glide ?? GLIDE;
+  if (k === 0 || t - cur.at > glide) return cur.deg;
   const prev = notes[k - 1].deg;
-  const u = clamp((t - cur.at) / GLIDE, 0, 1);
+  const u = clamp((t - cur.at) / glide, 0, 1);
   return prev + (cur.deg - prev) * (u * u * (3 - 2 * u));
 }
 

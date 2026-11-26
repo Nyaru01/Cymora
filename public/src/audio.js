@@ -84,6 +84,7 @@ const TONES = Object.freeze({
   remember: { ratio: 1.189, amp: 0.16, cutoff: 470, breath: 0.06 },// do : la tierce mineure, la mémoire
   listen: { ratio: 4, amp: 0.06, cutoff: 380, breath: 0.045 },     // très doux, presque rien : la nuit
   pulse: { ratio: 1.782, amp: 0.12, cutoff: 640, breath: 0.1 },    // sol : chaud, le cœur qui bat
+  resonate: { ratio: 2.67, amp: 0.13, cutoff: 760, breath: 0.08 }, // ré aigu, plus ouvert : tout résonne
   daily: { ratio: 2.67, amp: 0.09, cutoff: 600, breath: 0.07 },    // ré aigu : la résonance du jour
   free: { ratio: 2, amp: 0.05, cutoff: 520, breath: 0.07 },        // l'octave : neutre
 });
@@ -462,6 +463,30 @@ export function createAudio() {
         drone.gain.gain.setTargetAtTime(0.05 * (1 + 0.8 * k), t, 0.6);
         drone.gain.gain.setTargetAtTime(0.05, t + 2.2, 1.6);
       }
+    },
+    /** Glissade : une voix douce dont la hauteur glisse d'une note à l'autre (atelier Glisser). */
+    glide(from, to, seconds, { velocity = 0.3, pan = 0, delay = 0 } = {}) {
+      if (!enabled || !ctx || ctx.state !== 'running' || voices >= MAX_VOICES) return false;
+      const t = ctx.currentTime + Math.max(0, Math.min(2, delay)) + 0.01;
+      const dur = Math.max(0.2, seconds);
+      const { out, node } = output(pan);
+      out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(0.16 * velocity, t + 0.12);
+      out.gain.setTargetAtTime(0.0001, t + dur, 0.25);
+      const o = ctx.createOscillator();
+      o.frequency.setValueAtTime(from, t);
+      o.frequency.exponentialRampToValueAtTime(to, t + dur);
+      const o2 = ctx.createOscillator();
+      o2.frequency.setValueAtTime(from * 2, t);
+      o2.frequency.exponentialRampToValueAtTime(to * 2, t + dur);
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.18;
+      o.connect(out);
+      o2.connect(g2);
+      g2.connect(out);
+      for (const x of [o, o2]) { x.start(t); x.stop(t + dur + 1.2); }
+      track(o, [o, o2, g2, out, node]);
+      return true;
     },
     /** Accord de résolution : les notes du motif ensemble, égrenées comme une harpe lente. */
     chord(freqs, { velocity = 0.4, voice = 'bell', spread = 0.07 } = {}) {

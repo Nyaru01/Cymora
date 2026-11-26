@@ -118,8 +118,11 @@
       <h3 class="menu__head" data-i18n="menu.settings">Réglages</h3>
       <div class="menu__row"><span class="menu__label" id="set-sound-label"><b data-i18n="set.sound">Son</b><small data-i18n="set.soundLine"></small></span><button type="button" class="switch" id="set-sound" role="switch" aria-checked="true" aria-labelledby="set-sound-label"><span class="switch__knob"></span></button></div>
       <div class="menu__row menu__row--range"><label class="menu__label" for="set-volume"><b data-i18n="set.volume">Volume</b></label><input type="range" class="range" id="set-volume" min="0" max="100" step="5" value="70"></div>
+      <div class="menu__row menu__row--range"><label class="menu__label" for="set-ambience"><b data-i18n="set.ambience">Musique de fond</b></label><input type="range" class="range" id="set-ambience" min="0" max="100" step="5" value="100"></div>
       <div class="menu__row"><span class="menu__label" id="set-haptics-label"><b data-i18n="set.haptics">Vibrations</b><small id="set-haptics-line" data-i18n="set.hapticsLine"></small></span><button type="button" class="switch" id="set-haptics" role="switch" aria-checked="true" aria-labelledby="set-haptics-label"><span class="switch__knob"></span></button></div>
       <div class="menu__row"><span class="menu__label" id="set-guide-label"><b data-i18n="set.guide">Garder le chant visible</b><small data-i18n="set.guideLine"></small></span><button type="button" class="switch" id="set-guide" role="switch" aria-checked="true" aria-labelledby="set-guide-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row menu__row--phone"><span class="menu__label" id="set-low-label"><b data-i18n="set.low">Plaque plus basse</b><small data-i18n="set.lowLine"></small></span><button type="button" class="switch" id="set-low" role="switch" aria-checked="false" aria-labelledby="set-low-label"><span class="switch__knob"></span></button></div>
+      <div class="menu__row"><span class="menu__label" id="set-nacre-label"><b data-i18n="set.nacre">Teinte nacrée</b><small id="set-nacre-line"></small></span><button type="button" class="switch" id="set-nacre" role="switch" aria-checked="false" aria-labelledby="set-nacre-label"><span class="switch__knob"></span></button></div>
       <div class="menu__row"><span class="menu__label" id="set-calm-label"><b data-i18n="set.calm">Effets apaisés</b><small data-i18n="set.calmLine"></small></span><button type="button" class="switch" id="set-calm" role="switch" aria-checked="true" aria-labelledby="set-calm-label"><span class="switch__knob"></span></button></div>
       <h3 class="menu__head" data-i18n="menu.about">À propos</h3>
       <p class="menu__about" data-i18n="how"></p>
@@ -131,6 +134,12 @@
   <dialog class="map herbier" id="herbier" aria-labelledby="herbier-title">
     <form method="dialog">
       <h2 id="herbier-title" data-i18n="herbier.title">Herbier</h2>
+      <section class="crown" id="herbier-crown" aria-labelledby="herbier-crown-title" hidden>
+        <canvas class="crown__art" id="herbier-crown-cv" aria-hidden="true"></canvas>
+        <h3 class="crown__title" id="herbier-crown-title" data-i18n="crown.title">La grande rosace</h3>
+        <p class="map__lede" id="herbier-crown-line"></p>
+        <button class="enter enter--small" id="herbier-crown-listen" type="button"></button>
+      </section>
       <p class="map__lede" id="herbier-lede" data-i18n="herbier.lede"></p>
       <div id="herbier-grid"></div>
       <section class="herbier__detail" id="herbier-detail" aria-labelledby="herbier-name" hidden>

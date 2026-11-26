@@ -30,7 +30,7 @@ const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.25.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.26.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -66,6 +66,29 @@ const INKS = {
 };
 const GLIDE_INK = '#ffd9a8'; // couleur des longues glissades (atelier Glisser) : chaude, pour dire « ralentis »
 const CHORUS_INK = '#a58cff';
+const NACRE_INK = '#f6ecff'; // la teinte nacrée, gagnée avec l'herbier complet
+/**
+ * Le plancton de chaque chapitre : montée (rise), courant latéral (drift), ondulation (sway),
+ * tourbillon autour de la plaque (swirl), taille, part de lucioles (flash), densité, battement.
+ */
+const MOTES = {
+  base: { rise: 0.007, drift: 0, sway: 0.03, swirl: 0, size: 1, flash: 0.06, density: 1, beat: 0 },
+  see: { rise: 0.011, drift: 0, sway: 0.025, swirl: 0, size: 1, flash: 0.08, density: 1, beat: 0 }, // aube : ça monte vers la lumière
+  follow: { rise: 0.002, drift: 0.016, sway: 0.02, swirl: 0, size: 0.9, flash: 0.04, density: 1, beat: 0 }, // matin : un courant
+  remember: { rise: -0.005, drift: -0.002, sway: 0.035, swirl: 0, size: 1.2, flash: 0.04, density: 0.8, beat: 0 }, // crépuscule : ça retombe
+  listen: { rise: 0.0015, drift: 0, sway: 0.008, swirl: 0, size: 0.7, flash: 0.3, density: 0.55, beat: 0 }, // nuit : des étoiles
+  pulse: { rise: 0.005, drift: 0, sway: 0.02, swirl: 0, size: 1, flash: 0.05, density: 1, beat: 1 }, // le cœur bat
+  resonate: { rise: 0, drift: 0, sway: 0.015, swirl: 0.03, size: 1.05, flash: 0.12, density: 1, beat: 0 }, // tout tourne autour d'elle
+};
+/** Une signature de quelques notes à l'ouverture de chaque chapitre (degrés de la gamme, écart en secondes). */
+const THEMES = {
+  see: { degs: [2, 4, 5, 7], gap: 0.5 },
+  follow: { degs: [4, 5, 4, 6, 7], gap: 0.36 },
+  remember: { degs: [8, 7, 5, 4, 2], gap: 0.55 },
+  listen: { degs: [9, 6, 8], gap: 0.9 },
+  pulse: { degs: [3, 3, 5, 5, 7], gap: 0.62 },
+  resonate: { degs: [1, 3, 5, 7, 9, 10], gap: 0.42 },
+};
 /** Grand écran : un panneau à gauche, le champ à droite. Même seuil que la feuille de style. */
 const WIDE = matchMedia('(min-width: 1000px) and (min-height: 560px) and (min-aspect-ratio: 5/4)');
 
@@ -129,7 +152,7 @@ async function watchUpdates() {
 
 /** Vibration (téléphone) : de courtes impulsions, jamais insistantes. */
 /** Réglages du joueur, gardés sur l'appareil. */
-const settings = { sound: true, haptics: true, guide: false, calm: false, volume: 0.7 };
+const settings = { sound: true, haptics: true, guide: false, calm: false, volume: 0.7, ambience: 1, low: false, nacre: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS) ?? '{}')); } catch { /* réglages par défaut */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS, JSON.stringify(settings)); } catch { /* le temps de la séance */ } };
 
@@ -434,6 +457,7 @@ class Cymora {
     this.greet();
     this.audio = createAudio();
     this.audio.setVolume(settings.volume);
+    this.audio.setAmbience(settings.ambience);
     this.settings = { ...E.DEFAULTS, speed: reducedMotion ? 0.3 : 0.55, turbulence: 0.18, glow: 0.6 };
     this.world = E.createWorld(20261125);
     this.world.nodes = [];
@@ -648,6 +672,18 @@ class Cymora {
       this.audio.setVolume(settings.volume);
       saveSettings();
     });
+    $('#set-ambience').addEventListener('input', (ev) => {
+      settings.ambience = clamp(Number(ev.target.value) / 100, 0, 1);
+      this.audio.setAmbience(settings.ambience);
+      saveSettings();
+    });
+    $('#set-low').addEventListener('click', () => { settings.low = !settings.low; saveSettings(); this.syncSettings(); this.resize(); });
+    $('#set-nacre').addEventListener('click', () => {
+      if (!this.herbierComplete && !LOCAL) return;
+      settings.nacre = !settings.nacre;
+      saveSettings();
+      this.syncSettings();
+    });
     $('#set-sound').addEventListener('click', async () => {
       settings.sound = !settings.sound;
       saveSettings();
@@ -680,9 +716,17 @@ class Cymora {
   }
 
   syncSettings() {
-    for (const key of ['sound', 'haptics', 'guide', 'calm']) $(`#set-${key}`).setAttribute('aria-checked', String(settings[key]));
+    for (const key of ['sound', 'haptics', 'guide', 'calm', 'low']) $(`#set-${key}`).setAttribute('aria-checked', String(settings[key]));
     $('#set-volume').value = String(Math.round(settings.volume * 100));
     $('#set-volume').disabled = !settings.sound;
+    $('#set-ambience').value = String(Math.round(settings.ambience * 100));
+    $('#set-ambience').disabled = !settings.sound;
+    // La teinte nacrée se gagne en complétant l'herbier (toujours disponible en local, pour la tester).
+    const nacreOpen = this.herbierComplete || LOCAL;
+    $('#set-nacre').disabled = !nacreOpen;
+    $('#set-nacre').setAttribute('aria-checked', String(nacreOpen && settings.nacre));
+    $('#set-nacre-line').textContent = t(nacreOpen ? 'set.nacreLine' : 'set.nacreLocked');
+    document.body.classList.toggle('is-nacre', nacreOpen && settings.nacre);
     const hapticsOk = CAN_VIBRATE || IOS;
     $('#set-haptics').disabled = !hapticsOk;
     $('#set-haptics-line').textContent = t(!hapticsOk ? 'set.hapticsNone' : CAN_VIBRATE ? 'set.hapticsLine' : 'set.hapticsIos');
@@ -770,15 +814,33 @@ class Cymora {
       this.cv.focus({ preventScroll: true });
       this.startTide(chapter, index);
     });
+    $('#herbier-crown-listen').addEventListener('click', () => {
+      if (this.herbierPlayback?.crown) this.stopHerbier();
+      else this.playCrown();
+    });
     this.herbier.addEventListener('close', () => {
       this.stopHerbier();
+      cancelAnimationFrame(this.crownRaf);
+      this.crownRaf = null;
       this.herbierSelection = null;
       if (settings.sound && this.audio.enabled && !document.hidden) this.audio.drone(true);
       this.syncSound();
     });
   }
 
+  /** Tous les chants de l'aventure accordés. */
+  get herbierComplete() {
+    const best = this.progress?.best ?? [];
+    return best.length >= G.TIDES.length && best.every((tide) => tide.length >= G.MOTIFS_PER_TIDE && tide.every((v) => v >= G.PASS));
+  }
+
   openHerbier() {
+    const crown = $('#herbier-crown');
+    const full = this.herbierComplete;
+    crown.hidden = !(full || LOCAL);
+    $('#herbier-crown-line').textContent = t(full ? 'crown.line' : 'crown.preview');
+    $('#herbier-crown-listen').textContent = t('crown.listen');
+    if (!crown.hidden) this.startCrown();
     const grid = $('#herbier-grid');
     grid.replaceChildren();
     this.showHerbierDetail(false);
@@ -819,6 +881,7 @@ class Cymora {
   showHerbierDetail(show) {
     $('#herbier-grid').hidden = show;
     $('#herbier-lede').hidden = show;
+    $('#herbier-crown').classList.toggle('is-away', show);
     $('#herbier-detail').hidden = !show;
   }
 
@@ -835,6 +898,95 @@ class Cymora {
     this.showHerbierDetail(true);
     $('#herbier-listen').focus();
     if (settings.sound) this.playHerbier();
+  }
+
+  /** La grande rosace : les trente chants mêlés, chaque chapitre dans sa couleur, qui tournent lentement. */
+  startCrown() {
+    cancelAnimationFrame(this.crownRaf);
+    const cv = $('#herbier-crown-cv');
+    const S = 220;
+    const d = Math.min(2, devicePixelRatio || 1);
+    cv.width = cv.height = S * d;
+    const g = cv.getContext('2d');
+    this.crownTraces ??= G.TIDES.map((tide, k) => Array.from({ length: G.MOTIFS_PER_TIDE }, (_, i) => G.motifTrace(G.tideMotif(k, i), 18)));
+    const t0 = performance.now();
+    const frame = (now) => {
+      const time = reducedMotion ? 0 : (now - t0) / 1000;
+      this.drawCrown(g, S, d, time);
+      if (this.herbier.open) this.crownRaf = requestAnimationFrame(frame);
+    };
+    this.drawCrown(g, S, d, 0);
+    this.crownRaf = requestAnimationFrame(frame);
+  }
+
+  drawCrown(g, S, d, time) {
+    const c = S / 2;
+    g.setTransform(d, 0, 0, d, 0, 0);
+    g.clearRect(0, 0, S, S);
+    g.globalCompositeOperation = 'lighter';
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    const petals = 6;
+    // Le chant joué s'allume : un éclat qui suit la lecture du chant de l'herbier.
+    const lit = this.herbierPlayback?.crown ? this.herbierPlayback.lit ?? -1 : -1;
+    G.TIDES.forEach((tide, k) => {
+      const color = (INKS[tide.id] ?? INKS.free).guide;
+      const r0 = c * (0.08 + k * 0.105);
+      const turn = time * 0.035 * (k % 2 ? -1 : 1);
+      g.strokeStyle = color;
+      g.shadowColor = color;
+      g.shadowBlur = lit === k ? 12 : 5;
+      g.globalAlpha = lit === k ? 0.85 : 0.32 + 0.06 * Math.sin(time * 0.7 + k);
+      g.lineWidth = lit === k ? 1.3 : 0.8;
+      this.crownTraces[k].forEach((tr, i) => {
+        for (let p = 0; p < petals; p++) {
+          const base = turn + (p * TAU) / petals + (i * TAU) / (petals * G.MOTIFS_PER_TIDE);
+          g.beginPath();
+          tr.forEach((pt, j) => {
+            const a = base + ((pt.x - 0.16) / 0.68) * (Math.PI / petals) * 0.9;
+            const r = r0 + (1 - pt.y) * c * 0.3;
+            const x = c + Math.cos(a) * r;
+            const y = c + Math.sin(a) * r;
+            if (j) g.lineTo(x, y); else g.moveTo(x, y);
+          });
+          g.stroke();
+        }
+      });
+    });
+    // Le cœur : une perle d'or qui respire.
+    g.globalAlpha = 0.8 + 0.2 * Math.sin(time * 1.3);
+    g.shadowColor = '#ffd27a';
+    g.shadowBlur = 16;
+    g.fillStyle = '#ffe6b0';
+    g.beginPath();
+    g.arc(c, c, 3.2, 0, TAU);
+    g.fill();
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+  }
+
+  /** Le chant de l'herbier : une phrase par chapitre (son chant le mieux accordé), enchaînées. */
+  async playCrown() {
+    if (this.herbierPlayback) this.stopHerbier();
+    const notes = [];
+    let at = 0.4;
+    G.TIDES.forEach((tide, k) => {
+      const best = this.progress.best[k] ?? [];
+      const i = best.reduce((top, v, j) => (v > (best[top] ?? -1) ? j : top), 0);
+      const m = G.tideMotif(k, i);
+      const pace = 0.82; // un peu plus allant que dans le jeu : c'est un récit
+      m.notes.forEach((n, j) => notes.push({ at: at + n.at * pace, freq: G.degreeFreq(n.deg), voice: j ? 'glass' : 'bell', velocity: j ? 0.3 : 0.36, chapter: k }));
+      at += m.duration * pace + 0.9;
+    });
+    // Elle conclut en posant l'accord de tout le voyage.
+    for (const deg of [0, 2, 4, 7]) notes.push({ at, freq: G.degreeFreq(deg), voice: 'breath', velocity: 0.32, chapter: -1 });
+    const playback = { notes, next: 0, start: null, end: at + 3, crown: true, lit: -1 };
+    this.herbierPlayback = playback;
+    $('#herbier-crown-listen').textContent = t('herbier.stop');
+    const enabled = this.audio.enabled || await this.audio.enable();
+    if (this.herbierPlayback !== playback) return;
+    if (!enabled) { this.stopHerbier(t('herbier.audioFailed')); return; }
+    playback.start = performance.now();
   }
 
   async playHerbier() {
@@ -871,6 +1023,11 @@ class Cymora {
     while (playback.next < playback.notes.length && playback.notes[playback.next].at <= time) {
       const i = playback.next++;
       const note = playback.notes[i];
+      if (playback.crown) {
+        playback.lit = note.chapter;
+        this.audio.note(note.freq, { voice: note.voice, velocity: note.velocity });
+        continue;
+      }
       if (note.echo && !playback.notes[i - 1]?.echo) $('#herbier-status').textContent = t('herbier.echoNow');
       this.audio.note(note.freq, note.echo ? { voice: 'bell', velocity: 0.26 } : { voice: 'glass', velocity: 0.34 });
     }
@@ -879,6 +1036,7 @@ class Cymora {
 
   stopHerbier(message = '') {
     this.herbierPlayback = null;
+    $('#herbier-crown-listen').textContent = t('crown.listen');
     $('#herbier-listen').textContent = t('herbier.listen');
     $('#herbier-status').textContent = message;
   }
@@ -1045,7 +1203,22 @@ class Cymora {
     this.relabel();
     const id = G.TIDES[k].id;
     this.showCard(t('card.tide', { n: ROMAN[k] }) + ' · ' + t(`tide.${id}`), t(`story.${id}`), t(`line.${id}`), 7000);
+    this.playTheme(id);
     this.enterInterlude(5.6, () => this.newMotif());
+  }
+
+  /** La signature du chapitre : quelques notes de cloche pendant que sa carte s'affiche. */
+  playTheme(id) {
+    const theme = THEMES[id];
+    if (!theme || !this.audio.enabled) return;
+    clearTimeout(this.themeTimer);
+    const token = (this.themeToken = (this.themeToken ?? 0) + 1);
+    theme.degs.forEach((deg, i) => {
+      setTimeout(() => {
+        if (this.themeToken !== token || this.phase !== 'interlude') return;
+        this.audio.note(G.degreeFreq(deg), { voice: 'bell', velocity: 0.22 + (i === theme.degs.length - 1 ? 0.06 : 0), pan: (i / Math.max(1, theme.degs.length - 1) - 0.5) * 0.5 });
+      }, 900 + i * theme.gap * 1000);
+    });
   }
 
   startDaily() {
@@ -1514,8 +1687,13 @@ class Cymora {
     if (this.mode === 'trial') {
       this.echoNext = pass ? 'next' : 'again';
     } else if (this.mode === 'tide') {
+      const wasFull = this.herbierComplete;
       const out = G.recordTide(this.progress, this.tideIdx, this.motifIdx, r.score, pass ? G.chorusTrace(points) : null);
       this.progress = out.progress;
+      if (!wasFull && this.herbierComplete) {
+        // Le dernier chant de l'herbier : la grande rosace et la teinte nacrée l'attendent.
+        setTimeout(() => this.toast(t('crown.news'), t('crown.open'), () => this.openHerbier()), 4200);
+      }
       this.echoNext = !pass ? 'again' : out.tideDone ? 'tideDone' : this.motifIdx + 1 < G.MOTIFS_PER_TIDE ? 'next' : 'replayDone';
     } else {
       this.progress = G.recordDay(this.progress, this.today, r.score);
@@ -2118,6 +2296,8 @@ class Cymora {
       size = Math.min(w * (w < 640 ? 0.96 : 0.9), h * (h < 520 ? 0.86 : 0.8));
       x = (w - size) / 2;
       y = (h - size) / 2 + (h < 520 ? 8 : 0);
+      // « Plaque plus basse » : à portée de pouce, en gardant la place du murmure dessous.
+      if (settings.low && h > w * 1.25) y = Math.max(y, Math.min(h - size - 96, (h - size) * 0.78));
     }
     this.rectCss = { x, y, size };
     document.body.style.setProperty('--field-cx', `${x + size / 2}px`);
@@ -2649,8 +2829,14 @@ class Cymora {
     const want = Math.round(clamp((innerWidth * innerHeight) / 6500, 110, 300));
     if (!this.motes || this.motes.length !== want) {
       const r = G.rng(11);
-      this.motes = Array.from({ length: want }, () => ({ x: r(), y: r(), z: 0.15 + r() * 0.85, ph: r() * TAU, c: r(), f: r() < 0.06 }));
+      this.motes = Array.from({ length: want }, () => ({ x: r(), y: r(), z: 0.15 + r() * 0.85, ph: r() * TAU, c: r(), q: r(), n: r() }));
     }
+    // Le caractère du chapitre, rejoint en douceur (quelques secondes) quand on change de chapitre.
+    const goal = MOTES[document.body.dataset.state === 'play' ? document.body.dataset.tide : 'base'] ?? MOTES.base;
+    const dt = clamp(this.clock - (this.motesAt ?? this.clock), 0, 0.1);
+    this.motesAt = this.clock;
+    const P = (this.moteStyle ??= { ...MOTES.base });
+    for (const key in P) P[key] += (goal[key] - P[key]) * Math.min(1, dt * 0.6);
     const e = clamp(this.energy, 0, 1);
     const still = reducedMotion ? 0 : 1;
     const t = this.clock * still;
@@ -2665,10 +2851,21 @@ class Cymora {
     const calm = settings.calm ? 0.6 : 1;
     g.save();
     g.globalCompositeOperation = 'lighter';
+    // Battement (chapitre de la mesure) : les grains s'allument à chaque temps.
+    const beat = P.beat > 0.01 ? P.beat * Math.exp(-((this.clock / G.BEAT) % 1) * 5) : 0;
+    const step = dt * still;
+    const nacre = document.body.classList.contains('is-nacre');
     for (const m of this.motes) {
-      // Dérive lente et tourbillonnante, plus rapide pour les grains proches (parallaxe).
-      let x = (((m.x + Math.sin(t * 0.05 * m.z + m.ph) * 0.03 + Math.sin(t * 0.013 + m.y * 6) * 0.01) % 1) + 1) % 1 * W;
-      let y = (((m.y - t * 0.007 * m.z + Math.cos(t * 0.04 * m.z + m.ph * 2) * 0.008) % 1) + 1) % 1 * H;
+      if (m.n > P.density) continue; // la nuit, moins de grains
+      // Dérive lente, plus rapide pour les grains proches (parallaxe) : montée, courant, ondulation, tourbillon.
+      const ax = m.x - 0.5;
+      const ay = m.y - 0.5;
+      m.x += (P.drift * m.z + Math.cos(t * 0.3 * m.z + m.ph) * P.sway * 0.08 * m.z - ay * P.swirl * m.z) * step;
+      m.y += (-P.rise * m.z + Math.sin(t * 0.25 * m.z + m.ph * 2) * P.sway * 0.04 * m.z + ax * P.swirl * m.z) * step;
+      m.x = ((m.x % 1) + 1) % 1;
+      m.y = ((m.y % 1) + 1) % 1;
+      let x = m.x * W;
+      let y = m.y * H;
       const dx = cx - x;
       const dy = cy - y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -2682,10 +2879,11 @@ class Cymora {
       if (near < reach) { const push = (1 - near / reach) * 26 * d * m.z; x += (qx / (near || 1)) * push; y += (qy / (near || 1)) * push; }
       const twinkle = 0.55 + 0.45 * Math.sin(t * (0.8 + m.z * 1.6) + m.ph * 3);
       // Lucioles : de rares grains s'allument un instant.
-      const flash = m.f ? Math.max(0, Math.sin(t * 0.6 + m.ph * 7)) ** 12 : 0;
-      const a = ((0.08 + 0.34 * m.z) * twinkle * (0.75 + e * 0.6 + wave * 0.9) + flash * 0.8) * calm;
-      const color = m.c < 0.45 ? inks.guide : m.c < 0.8 ? inks.stroke : '#ffffff';
-      const rad = (0.5 + m.z * 1.5) * d;
+      const flash = m.q < P.flash ? Math.max(0, Math.sin(t * 0.6 + m.ph * 7)) ** 12 : 0;
+      const a = ((0.08 + 0.34 * m.z) * twinkle * (0.75 + e * 0.6 + wave * 0.9 + beat * 0.7) + flash * 0.8) * calm;
+      let color = m.c < 0.45 ? inks.guide : m.c < 0.8 ? inks.stroke : '#ffffff';
+      if (nacre) color = mixHex(color, NACRE_INK, 0.55);
+      const rad = (0.5 + m.z * 1.5) * P.size * (1 + beat * 0.35) * d;
       // Les grains proches portent un halo flou (bokeh).
       if (m.z > 0.7 || flash > 0.05) {
         g.globalAlpha = a * 0.22;

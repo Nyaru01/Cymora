@@ -118,6 +118,8 @@ export function createAudio() {
   let bus = null; // sortie finale (compresseur), branchée sur les haut-parleurs et l'enregistreur
   let enabled = false;
   let volume = 0.6;
+  let ambience = 1; // la musique de fond (bourdon), réglable à part des notes
+  let ambBus = null;
   let voices = 0;
   let noise = null;
   let lastShimmer = 0;
@@ -150,6 +152,9 @@ export function createAudio() {
     }
     master = ctx.createGain();
     master.gain.value = volume;
+    ambBus = ctx.createGain();
+    ambBus.gain.value = ambience;
+    ambBus.connect(master);
 
     // Écho sous-marin : délai filtré réinjecté, légèrement modulé (houle).
     const delay = ctx.createDelay(2);
@@ -367,6 +372,11 @@ export function createAudio() {
       if (this.recording) return; // on ne coupe pas un enregistrement en cours
       if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
     },
+    /** Volume de la musique de fond seule (le bourdon), de 0 à 1. */
+    setAmbience(v) {
+      ambience = Math.min(1, Math.max(0, Number(v) || 0));
+      if (ambBus) ambBus.gain.setTargetAtTime(ambience, ctx.currentTime, 0.05);
+    },
     setVolume(v) {
       volume = Math.min(1, Math.max(0, Number(v) || 0));
       if (master) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
@@ -438,7 +448,7 @@ export function createAudio() {
       nodes.push(color, colorGain);
       breath.start(t);
       lp.connect(gain);
-      gain.connect(master);
+      gain.connect(ambBus);
       drone = { gain, nodes, lp, breath, color, colorGain, root };
       applyTone(drone, toneId, true);
       return true;

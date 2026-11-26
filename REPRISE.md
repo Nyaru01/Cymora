@@ -1,7 +1,7 @@
 # Reprendre Cymora — note de passation
 
 > À lire en premier par toute personne (ou tout agent) qui reprend le projet sur une autre machine.
-> Dernière livraison sur `Resonance` le 26 novembre 2026 — **1.25.0**. [Passation de Claude à Codex](docs/PASSATION-CLAUDE-1.25.0.md) · précédentes : [Claude, 1.24.2](docs/PASSATION-CLAUDE-1.24.2.md), [Claude, 1.22.6](docs/PASSATION-CLAUDE-1.22.6.md), [Codex, 1.20.0](docs/PASSATION-CODEX-1.20.0.md).
+> Dernière livraison sur `Resonance` le 26 novembre 2026 — **1.26.0**. [Passation de Claude à Codex](docs/PASSATION-CLAUDE-1.26.0.md) · précédentes : [Claude, 1.25.0](docs/PASSATION-CLAUDE-1.25.0.md), [Claude, 1.24.2](docs/PASSATION-CLAUDE-1.24.2.md), [Claude, 1.22.6](docs/PASSATION-CLAUDE-1.22.6.md), [Codex, 1.20.0](docs/PASSATION-CODEX-1.20.0.md).
 
 ## En deux mots
 

@@ -23,13 +23,14 @@ const SETTINGS = 'cymora.settings.v1';
 const ENDING_SEEN = 'cymora.seen.ending'; // la scène de fin se joue d'elle-même une fois, puis depuis le menu
 const HOLD_SEEN = 'cymora.seen.hold'; // la carte « notes tenues » n'apparaît qu'une fois
 const ACCORD_SEEN = 'cymora.seen.accord'; // le tutoriel de la jauge d'accord, une seule fois
+const FIRST_SEEN = 'cymora.seen.first'; // le tout premier chant : on n'apprend que le geste de base
 const GLIDE_SEEN = 'cymora.seen.glide';
 const REST_SEEN = 'cymora.seen.rest';
 const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.24.2'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.25.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -1280,12 +1281,22 @@ class Cymora {
       }
     }
     this.lesson = null;
-    if ((this.mode === 'tide' || this.mode === 'daily') && !seen(ACCORD_SEEN)) {
-      this.accordLesson = true;
-      this.showCard(t('card.accordNew'), t(FINE ? 'card.accordLessonPc' : 'card.accordLesson'), '', 7000);
-      return this.enterInterlude(5.6, () => this.enterCall());
-    }
+    if (this.accordFirst()) return;
     this.enterCall();
+  }
+
+  /** Deuxième chant du joueur : avant de chanter, elle présente la jauge d'accord (une seule fois). */
+  accordFirst() {
+    if (!(this.mode === 'tide' || this.mode === 'daily') || !seen(FIRST_SEEN) || seen(ACCORD_SEEN) || this.accordLesson) return false;
+    this.accordLesson = true;
+    this.showCard(t('card.accordNew'), t(FINE ? 'card.accordLessonPc' : 'card.accordLesson'), '', 9000);
+    this.enterInterlude(8, () => this.enterCall());
+    return true;
+  }
+
+  /** Le tout premier chant : rien d'autre à comprendre que « écoute, puis retrace ». */
+  get firstSong() {
+    return (this.mode === 'tide' || this.mode === 'daily') && !this.lesson && !seen(FIRST_SEEN);
   }
 
   setMotif(m) {
@@ -1367,6 +1378,7 @@ class Cymora {
     this.nextNote = 0;
     this.stroke = null;
     if (this.lesson?.kind === 'pulse') this.whisper(t('w.pulseCall'), 4000);
+    else if (this.firstSong) this.whisper(t('w.firstCall'), 5000);
     else if (!quiet) this.whisper(t('w.call'), 1800);
   }
 
@@ -1378,7 +1390,8 @@ class Cymora {
     this.heldNotes = new Set();
     this.tune = null;
     this.beatIdx = null;
-    if (this.accordLesson && !this.lesson) this.whisper(t('w.accordTurn'), 15000);
+    if (this.firstSong) this.whisper(t(FINE ? 'w.firstTurnPc' : 'w.firstTurn'), 15000);
+    else if (this.accordLesson && !this.lesson) this.whisper(t('w.accordTurn'), 15000);
     else if (this.motif.pulse) this.whisper(t('w.pulseTurn'), 7000);
     else if (this.lesson) this.whisper(t(FINE ? 'w.lessonTurnPc' : 'w.lessonTurn'), 15000);
     else if (!this.helping && this.motif.notes.some((note) => note.hold)) this.whisper(t('w.holdTurn'), 5500);
@@ -1447,6 +1460,7 @@ class Cymora {
   judge(points) {
     if (this.lesson) return this.judgeLesson(points);
     if (this.accordLesson) { this.accordLesson = false; try { localStorage.setItem(ACCORD_SEEN, '1'); } catch { /* elle le redira */ } }
+    if (this.mode === 'tide' || this.mode === 'daily') { try { localStorage.setItem(FIRST_SEEN, '1'); } catch { /* elle le redira */ } }
     const before = G.resonanceScore(this.progress);
     let r = G.attune(this.motif, points, this.passMark);
     const rhythm = this.motif.pulse ? G.rhythmOf(this.motif.notes, this.tune?.times ?? [], this.tempo, G.reachTimes(this.motif)) : null;
@@ -1528,6 +1542,7 @@ class Cymora {
     const next = this.echoNext;
     if (next === 'again') {
       this.attempts++;
+      if (this.accordFirst()) return;
       return this.enterCall();
     }
     if (next === 'next') {
@@ -1585,7 +1600,11 @@ class Cymora {
       const r = Math.hypot(dx, dy);
       const k = r > 0.46 ? 0.46 / r : 1; // hors de la plaque, elle regarde vers toi depuis son bord
       this.gaze = { x: 0.5 + dx * k, y: 0.5 + dy * k, at: this.clock };
-      if (!reducedMotion) this.E.addWake(this.world, this.gaze.x, this.gaze.y, 0, 0, r > 0.46 ? 0.008 : 0.016);
+      // Une onde à peine (le moteur refuse un rayon sous 0,02), espacée pour rester discrète.
+      if (!reducedMotion && now - (this.gazeWakeAt ?? 0) > 240) {
+        this.gazeWakeAt = now;
+        this.E.addWake(this.world, this.gaze.x, this.gaze.y, 0, 0, 0.02);
+      }
     }, { passive: true });
     // Curseur de la souris : une petite orbe lumineuse dessinée sur la plaque (le curseur système est caché).
     cv.addEventListener('pointermove', (ev) => {
@@ -1640,6 +1659,12 @@ class Cymora {
 
   beginTouch(x, y, id) {
     if (this.phase === 'countIn') return;
+    if (this.phase === 'interlude' && this.interlude && $('#card').classList.contains('is-on') && this.clock - this.phaseAt > 0.8) {
+      // Lu ? Un toucher fait passer la carte.
+      this.hideCard();
+      this.interlude.until = Math.min(this.interlude.until, this.clock + 0.7);
+      return;
+    }
     if (this.phase === 'call') { this.whisper(t('w.wait'), 1400); return; }
     if (this.phase === 'idle' && this.mode === 'daily') { this.newMotif(); return; } // rejouer le chant du jour
     if (!this.canDraw()) return;
@@ -2721,7 +2746,7 @@ class Cymora {
     g.fill();
     // Jauge d'accord : un rail autour de la plaque, qui se remplit depuis le haut avec l'accord du moment.
     // Un repère doré marque le seuil de réussite ; au-delà, toute la jauge devient dorée.
-    if (this.phase === 'turn' && this.live != null) {
+    if (this.phase === 'turn' && this.live != null && (this.mode === 'trial' || this.mode === 'free' || this.accordLesson || seen(ACCORD_SEEN))) {
       const v = clamp(this.gauge ?? this.live, 0, 1);
       const pass = this.passMark;
       const ok = v >= pass;
@@ -2812,6 +2837,7 @@ class Cymora {
     $('#card-title').textContent = title;
     $('#card-line').textContent = text;
     $('#card-hint').textContent = hint;
+    $('#card-skip').textContent = t(FINE ? 'card.skipPc' : 'card.skip');
     $('#card').classList.add('is-on');
     clearTimeout(this.cardTimer);
     this.cardTimer = setTimeout(() => this.hideCard(), ms);

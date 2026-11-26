@@ -2,7 +2,7 @@
 // Chaque version a son propre cache : la page et ses fichiers viennent toujours de la même version.
 // Une nouvelle version s'installe en arrière-plan puis attend : l'app propose de mettre à jour
 // (message « skip »), et rien ne change sous les doigts de quelqu'un qui joue.
-const VERSION = '1.24.2'; // à garder égal à la version de package.json (vérifié par les tests)
+const VERSION = '1.25.0'; // à garder égal à la version de package.json (vérifié par les tests)
 const CACHE = `cymora-${VERSION}`;
 const SHELL = ['./', './manifest.json', './favicon.svg', './icons/icon-192.png', './icons/cymora-hero.jpg',
   './shared/i18n.js', './src/app.js', './src/game.js', './src/strings.js', './src/styles.css', './src/audio.js',

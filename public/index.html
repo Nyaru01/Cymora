@@ -52,6 +52,14 @@
     </div>
   </header>
 
+  <section class="credits" id="credits" hidden aria-label="Crédits">
+    <div class="credits__roll" id="credits-roll"></div>
+    <button type="button" class="link link--quiet credits__skip" id="credits-skip" data-i18n="load.skip">Passer</button>
+  </section>
+  <section class="ending" id="ending" hidden aria-label="Fin">
+    <video class="ending__video" id="ending-video" data-wide="./vid/end_PC.mp4" data-portrait="./vid/end_mobile.mp4" playsinline preload="none" disablepictureinpicture aria-hidden="true"></video>
+    <button type="button" class="link link--quiet ending__skip" id="ending-skip" data-i18n="load.skip">Passer</button>
+  </section>
   <section class="splash" id="splash" aria-labelledby="splash-title">
     <canvas class="splash__glow" id="splash-glow" width="64" height="36" aria-hidden="true"></canvas>
     <video class="splash__video" id="splash-video" data-portrait="./vid/Intro.mp4" data-wide="./vid/intro_pc.mp4" playsinline preload="auto" disablepictureinpicture aria-hidden="true"></video>
@@ -105,6 +113,7 @@
         <button type="button" class="menu__item" id="menu-herbier"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 4.5c2 2.5 2 5 0 7.5-2-2.5-2-5 0-7.5Zm0 15c-2-2.5-2-5 0-7.5 2 2.5 2 5 0 7.5ZM4.5 12c2.5-2 5-2 7.5 0-2.5 2-5 2-7.5 0Zm15 0c-2.5 2-5 2-7.5 0 2.5-2 5-2 7.5 0Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span data-i18n="herbier.title">Herbier</span></button>
         <button type="button" class="menu__item" id="menu-daily"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5a7.5 7.5 0 1 0 4 13.5 6 6 0 0 1-4-13.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span data-i18n="daily">La résonance du jour</span></button>
         <button type="button" class="menu__item" id="menu-free"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c2.5-5 4.5-5 6 0s3.5 5 6 0 3.5-5 6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span data-i18n="free">Improviser</span></button>
+        <button type="button" class="menu__item" id="menu-ending" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 9v6l5-3z" fill="currentColor"/></svg><span data-i18n="menu.ending">Revoir la fin</span></button>
       </div>
       <h3 class="menu__head" data-i18n="menu.settings">Réglages</h3>
       <div class="menu__row"><span class="menu__label" id="set-sound-label"><b data-i18n="set.sound">Son</b><small data-i18n="set.soundLine"></small></span><button type="button" class="switch" id="set-sound" role="switch" aria-checked="true" aria-labelledby="set-sound-label"><span class="switch__knob"></span></button></div>

@@ -410,6 +410,50 @@ body.no-intro .splash__video, body.no-intro .splash__glow, body.no-intro .splash
 .splash__sound { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); display: inline-flex; align-items: center; gap: 8px; animation: veilIn 0.8s ease both; }
 .splash__sound svg { width: 18px; height: 18px; color: var(--accent); }
 .splash__sound[hidden], .splash__skip[hidden], .splash__gate[hidden] { display: none; }
+/* Scène de fin : Cymora retrouve sa voix. Plein écran, en fondu ; sa lumière finale se dissout dans le jeu. */
+.ending { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; overflow: hidden; background: #000; opacity: 0; transition: opacity 1.8s var(--slow); }
+.ending[hidden] { display: none; }
+/* Crédits : la nuit du jeu, un plancton qui dérive, le texte qui monte lentement. */
+/* Un voile plus léger au centre : la matière de Cymora vit derrière le texte. */
+.credits { position: fixed; inset: 0; z-index: 9; overflow: hidden; background: radial-gradient(ellipse 62% 58% at 50% 50%, rgba(3, 4, 11, 0.28) 0%, rgba(3, 4, 11, 0.62) 55%, rgba(3, 4, 11, 0.9) 100%); opacity: 0; transition: opacity 1.8s var(--slow); }
+.credits.is-instant { transition: none; }
+/* Sortie de la vidéo de fin (qui finit très claire) : sa lumière se prolonge en un voile qui se dissout. */
+.credits::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse 75% 70% at 50% 50%, rgba(225, 250, 255, 0.95), rgba(130, 220, 255, 0.55) 45%, rgba(40, 60, 110, 0.25) 75%, rgba(3, 4, 11, 0) 100%); }
+.credits.is-wash::after { animation: creditsWash 4.2s cubic-bezier(.25, .1, .25, 1) forwards; }
+@keyframes creditsWash { from { opacity: 1; } to { opacity: 0; } }
+body.is-credits .bar, body.is-credits .side, body.is-credits .whisper { opacity: 0; pointer-events: none; transition: opacity 1s; }
+.credits__roll p { text-shadow: 0 1px 10px rgba(3, 4, 11, 0.9); }
+.credits[hidden] { display: none; }
+.credits.is-on { opacity: 1; }
+.credits::before { content: none; display: none; position: absolute; inset: -20%; pointer-events: none; opacity: 0;
+  background-image: radial-gradient(1.5px 1.5px at 12% 22%, #9ff6ff, transparent), radial-gradient(1px 1px at 28% 68%, #d2c2ff, transparent), radial-gradient(2px 2px at 44% 36%, #8ff0ff, transparent), radial-gradient(1px 1px at 58% 82%, #fff, transparent), radial-gradient(1.5px 1.5px at 72% 18%, #d2c2ff, transparent), radial-gradient(1px 1px at 86% 58%, #9ff6ff, transparent), radial-gradient(2px 2px at 92% 88%, #8ff0ff, transparent), radial-gradient(1px 1px at 6% 90%, #fff, transparent);
+  background-size: 420px 420px; animation: plankton 60s linear infinite; }
+.credits__roll { position: absolute; left: 50%; top: 0; width: min(560px, 86vw); transform: translate(-50%, 100vh); will-change: transform; display: grid; justify-items: center; gap: 6px; text-align: center; color: var(--soft); }
+.credits.is-on .credits__roll { animation: creditsRoll var(--roll, 26s) linear forwards; }
+/* Défilement par translation seule (composée par la carte graphique) : fluide sur téléphone. */
+@keyframes creditsRoll { from { transform: translate(-50%, 100vh); } to { transform: translate(-50%, -100%); } }
+.credits__logo { width: min(320px, 64vw); height: auto; aspect-ratio: 1; margin-bottom: 4px; border-radius: 50%; /* pas de carré : seulement la rosace, fondue en cercle dans la nuit */
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 46%, transparent 70%); mask-image: radial-gradient(circle at 50% 50%, #000 46%, transparent 70%); }
+/* La rosace naît doucement de la lumière au lieu d'apparaître d'un coup. */
+.credits.is-on .credits__logo { animation: creditsLogo 4s ease-in-out 0.8s both; }
+@keyframes creditsLogo { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .credits.is-on .credits__logo { animation: none; } }
+.credits__line { margin: 0 0 42px; font: italic clamp(20px, 2.8vh, 28px)/1.4 var(--serif); color: var(--dim); }
+.credits__h { margin: 30px 0 0; font: 12.5px/1 var(--sans); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+.credits__v { margin: 4px 0 0; font: italic clamp(19px, 2.5vh, 26px)/1.35 var(--serif); }
+.credits__end { margin: 70px 0 0; font: italic clamp(22px, 3vh, 30px)/1.4 var(--serif); }
+.credits__back { margin: 10px 0 0; color: var(--dim); font-size: 14px; }
+.credits__skip { position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); right: max(22px, env(safe-area-inset-right)); padding: 10px 6px; color: var(--dim); }
+@media (prefers-reduced-motion: reduce) { .credits.is-on .credits__roll { animation: none; transform: translate(-50%, 0); top: 10vh; } }
+.ending.is-on { opacity: 1; }
+.ending.is-leaving { opacity: 0; transition: opacity 3.2s var(--slow); }
+.ending__video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Version PC : ses bandes noires (≈ 8 %) sortent de l'écran. Écran plus large que 16:9 : entière, bords fondus. */
+.ending.is-wide .ending__video { transform: scale(1.18); }
+@media (min-aspect-ratio: 16/9) {
+  .ending.is-wide .ending__video { object-fit: contain; -webkit-mask-image: linear-gradient(90deg, transparent calc(50% - 105vh), #000 calc(50% - 85vh), #000 calc(50% + 85vh), transparent calc(50% + 105vh)); mask-image: linear-gradient(90deg, transparent calc(50% - 105vh), #000 calc(50% - 85vh), #000 calc(50% + 85vh), transparent calc(50% + 105vh)); }
+}
+.ending__skip { position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); right: max(22px, env(safe-area-inset-right)); padding: 10px 6px; color: var(--dim); }
 /* Le son est refusé avant un premier geste : on invite à toucher, et l'intro part alors avec le son. */
 .splash__gate { display: grid; justify-items: center; gap: 10px; margin-top: 8px; padding: 18px 40px 16px; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 999px; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, #03040b 70%, transparent) 70%); color: var(--soft); cursor: pointer; backdrop-filter: blur(6px); animation: veilIn 1.2s ease 0.4s both, call 3.6s ease-in-out 1.6s infinite; }
 .splash__gate-main { font: italic clamp(22px, 2.8vh, 30px)/1.15 var(--serif); letter-spacing: 0.01em; text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent); }

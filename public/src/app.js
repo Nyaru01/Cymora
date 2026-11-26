@@ -20,12 +20,13 @@ const COUNT_IN_BEATS = 2;
 const STORE = 'cymora.progress.v1';
 const FREE_STORE = 'cymora.free.v1';
 const SETTINGS = 'cymora.settings.v1';
+const ENDING_SEEN = 'cymora.seen.ending'; // la scène de fin se joue d'elle-même une fois, puis depuis le menu
 const HOLD_SEEN = 'cymora.seen.hold'; // la carte « notes tenues » n'apparaît qu'une fois
 const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.20.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.22.6'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -102,7 +103,7 @@ async function watchUpdates() {
     if (!worker || !navigator.serviceWorker.controller) return; // première installation : rien à proposer
     const box = $('#update');
     box.hidden = false;
-    requestAnimationFrame(() => box.classList.add('is-on'));
+    setTimeout(() => box.classList.add('is-on'), 30); // juste après l'affichage, pour que le fondu se joue
     $('#update-go').onclick = () => {
       $('#update-go').disabled = true;
       navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
@@ -378,7 +379,7 @@ async function openThreshold() {
 function fadeOutVideo(v, ms = 3000) {
   if (v.dataset.fading) return;
   v.dataset.fading = '1';
-  intro.onFade?.(); // fondu enchaîné : son fredonnement monte pendant que l'intro s'éteint
+  if (v.id === 'splash-video') intro.onFade?.(); // fondu enchaîné : son fredonnement monte pendant que l'intro s'éteint
   if (v.paused || v.muted) return; // muette : rien à éteindre, l'image continue jusqu'au bout
   const from = v.volume;
   const t0 = performance.now();
@@ -597,6 +598,7 @@ class Cymora {
     $('#menu-herbier').addEventListener('click', async () => { await closeDialog(menu); this.openHerbier(); });
     // Depuis l'accueil, on passe par les mêmes boutons que l'accueil (son, entrée en jeu) ; en jeu, on y va directement.
     $('#menu-daily').addEventListener('click', async () => { await closeDialog(menu); if (document.body.dataset.state === 'play') this.startDaily(); else $('#go-daily').click(); });
+    $('#menu-ending').addEventListener('click', async () => { await closeDialog(menu); this.playEnding(() => this.showCredits(true)); });
     $('#menu-free').addEventListener('click', async () => { await closeDialog(menu); if (document.body.dataset.state === 'play') this.startFree(); else $('#go-free').click(); });
     $('#set-volume').addEventListener('input', (ev) => {
       settings.volume = clamp(Number(ev.target.value) / 100, 0, 1);
@@ -629,6 +631,7 @@ class Cymora {
 
   openMenu() {
     $('#menu-home').hidden = document.body.dataset.state !== 'play';
+    $('#menu-ending').hidden = !(seen(ENDING_SEEN) || LOCAL); // en local, toujours là pour tester la fin
     this.syncSettings();
     openDialog($('#menu'));
   }
@@ -979,6 +982,7 @@ class Cymora {
   setTone(id) {
     document.body.dataset.tide = id;
     this.inks = INKS[id] ?? INKS.free;
+    this.audio?.tone?.(id); // le bourdon glisse vers la couleur sonore du chapitre
     this.rhythmFeedback = null;
   }
 
@@ -1067,9 +1071,129 @@ class Cymora {
     this.tideIdx = G.TIDES.length - 1;
     this.setTone('listen');
     this.relabel();
-    this.showCard(t('card.end'), t('card.endLine'), '', 10000);
-    this.pulse(1.6);
     this.phase = 'idle';
+    // Après la vidéo : les crédits, puis le retour à l'accueil. (Déjà vue : la carte de fin, comme avant.)
+    const after = () => this.showCredits(true);
+    // La première fois : la scène de fin (Cymora retrouve sa voix), puis la carte.
+    if (!seen(ENDING_SEEN)) this.playEnding(after);
+    else { this.showCard(t('card.end'), t('card.endLine'), '', 10000); this.pulse(1.6); this.bloom(1); }
+  }
+
+  /**
+   * Crédits de fin : ils montent lentement sur la nuit du jeu, avec son fredonnement,
+   * puis on revient à l'accueil (à la fin du défilement, ou sur « Passer »).
+   */
+  showCredits(instant = false) {
+    const box = $('#credits');
+    const roll = $('#credits-roll');
+    if (!box || !roll) { this.goHome(); return; }
+    // Derrière les crédits, la matière continue de vivre : on la laisse respirer, sans carte ni murmure.
+    document.body.dataset.state = 'play';
+    document.body.classList.add('is-credits');
+    this.mode = 'menu';
+    this.phase = 'idle';
+    this.touch = null;
+    this.hideCard();
+    clearTimeout(this.whisperTimer);
+    $('#whisper').classList.remove('is-on');
+    const el = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; return n; };
+    const logo = el('img', 'credits__logo');
+    logo.src = './icons/cymora-hero.jpg';
+    logo.alt = 'Cymora';
+    const items = [logo, el('p', 'credits__line', t('credits.line'))];
+    for (const key of ['creator', 'code', 'sound', 'matter']) {
+      const v = t(`credits.${key}`);
+      if (!v || v === `credits.${key}`) continue; // une rubrique vide reste cachée
+      items.push(el('p', 'credits__h', t(`credits.${key}.h`)), el('p', 'credits__v', v));
+    }
+    items.push(el('p', 'credits__end', t('credits.thanks')), el('p', 'credits__back', t('credits.back')));
+    roll.replaceChildren(...items);
+    box.style.setProperty('--roll', '30s');
+    box.classList.toggle('is-instant', instant);
+    box.classList.toggle('is-wash', instant); // on sort d'une vidéo très claire : un voile de lumière fait le lien
+    box.hidden = false;
+    this.setTone('listen');
+    if (settings.sound && this.audio.enabled) this.audio.drone(true);
+    if (instant) box.classList.add('is-on');
+    else setTimeout(() => box.classList.add('is-on'), 30); // juste après l'affichage, pour que le fondu se joue
+    // Elle chante chaque nom : quand une rubrique passe au milieu de l'écran, une note monte, la matière pulse.
+    const degrees = [2, 4, 5, 7, 9, 10];
+    let sung = 0;
+    const sing = (target) => {
+      const last = target.classList.contains('credits__end');
+      if (this.audio.enabled) {
+        if (last) this.audio.chord([0, 2, 4, 7].map((k) => G.degreeFreq(k)), { velocity: 0.4 });
+        else this.audio.note(G.degreeFreq(degrees[sung % degrees.length]), { voice: 'glass', velocity: 0.38, pan: (sung % 2 ? -0.3 : 0.3) });
+        if (last) this.audio.bloom([0, 2, 4, 7].map((k) => G.degreeFreq(k)), 1);
+      }
+      sung++;
+      this.pulse(last ? 1.4 : 0.6);
+      this.bloom(last ? 1 : 0.45);
+      this.E.addWake(this.world, 0.5, 0.5, 0, 0, last ? 0.12 : 0.06);
+    };
+    const watch = 'IntersectionObserver' in globalThis
+      ? new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) { watch.unobserve(e.target); sing(e.target); } }, { rootMargin: '-46% 0px -46% 0px' })
+      : null;
+    if (watch) for (const n of roll.querySelectorAll('.credits__line, .credits__h, .credits__end')) watch.observe(n);
+    let done = false;
+    const leave = () => {
+      if (done) return;
+      done = true;
+      watch?.disconnect();
+      box.classList.remove('is-on');
+      setTimeout(() => { box.hidden = true; roll.replaceChildren(); document.body.classList.remove('is-credits'); this.goHome(); }, 1800);
+    };
+    // Seule la fin du défilement compte : l'animation de la rosace, à l'intérieur, remonte aussi jusqu'ici.
+    const rolled = (e) => { if (e.target === roll && e.animationName === 'creditsRoll') { roll.removeEventListener('animationend', rolled); leave(); } };
+    roll.addEventListener('animationend', rolled);
+    $('#credits-skip').onclick = leave;
+    if (reducedMotion) setTimeout(leave, 12000);
+  }
+
+  /**
+   * Scène de fin en vidéo, avec son propre son : le bourdon s'efface, la vidéo apparaît en fondu,
+   * et sa lumière finale se dissout dans le jeu. « Passer » est toujours possible.
+   */
+  playEnding(then = null) {
+    const box = $('#ending');
+    const v = $('#ending-video');
+    if (!box || !v || this.endingOn) { then?.(); return; }
+    this.endingOn = true;
+    try { localStorage.setItem(ENDING_SEEN, '1'); } catch { /* elle se rejouera */ }
+    $('#menu-ending').hidden = false;
+    const wide = matchMedia('(min-aspect-ratio: 4/3)').matches;
+    box.classList.toggle('is-wide', wide);
+    v.src = wide ? v.dataset.wide : v.dataset.portrait;
+    v.currentTime = 0;
+    v.muted = !settings.sound;
+    v.volume = settings.volume ?? 0.7;
+    if (this.audio.enabled) this.audio.drone(false);
+    box.hidden = false;
+    setTimeout(() => box.classList.add('is-on'), 30); // juste après l'affichage, pour que le fondu se joue
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      // Ce qui suit (les crédits) se place dessous tout de suite : la vidéo se dissout dedans, sans rien laisser voir entre les deux.
+      then?.();
+      box.classList.add('is-leaving');
+      fadeOutVideo(v, 3000);
+      setTimeout(() => {
+        box.classList.remove('is-on', 'is-leaving');
+        box.hidden = true;
+        v.pause();
+        delete v.dataset.fading;
+        this.endingOn = false;
+        if (settings.sound && this.audio.enabled && !document.hidden) this.audio.drone(true);
+      }, 3300);
+    };
+    // La lumière finale est très claire : on commence le fondu juste avant la dernière image.
+    const near = () => { if (v.duration && v.duration - v.currentTime < 2) { v.removeEventListener('timeupdate', near); finish(); } };
+    v.addEventListener('timeupdate', near);
+    v.addEventListener('ended', finish, { once: true });
+    v.addEventListener('error', finish, { once: true });
+    $('#ending-skip').onclick = finish;
+    v.play().catch(() => { v.muted = true; v.play().catch(finish); });
   }
 
   newMotif() {
@@ -1295,6 +1419,8 @@ class Cymora {
     if (pass && this.audio.enabled) {
       const freqs = [...new Set(this.motif.notes.map((n) => G.degreeFreq(n.deg)))].sort((a, b) => a - b);
       this.audio.chord(freqs, { velocity: r.verdict === 'resonance' ? 0.45 : 0.3 });
+      // En résonance (et plus encore au parfait), l'accord s'épanouit : nappe soufflée, éclats aigus.
+      if (r.score >= G.RESONANCE) this.audio.bloom(freqs, r.score >= G.PERFECT ? 1 : 0.7);
     }
   }
 

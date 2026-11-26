@@ -75,6 +75,39 @@ export function pickRecordingType(isSupported) {
 }
 
 /**
+ * Couleurs du bourdon par chapitre. ratio : quatrième voix, toujours une note de la gamme du jeu
+ * (la mineur pentatonique : la, do, ré, mi, sol) pour rester en accord avec le chant.
+ */
+const TONES = Object.freeze({
+  see: { ratio: 3, amp: 0.1, cutoff: 560, breath: 0.07 },          // mi aigu : clair, l'aube
+  follow: { ratio: 1.335, amp: 0.14, cutoff: 680, breath: 0.08 },  // ré : suspendu, en mouvement
+  remember: { ratio: 1.189, amp: 0.16, cutoff: 470, breath: 0.06 },// do : la tierce mineure, la mémoire
+  listen: { ratio: 4, amp: 0.06, cutoff: 380, breath: 0.045 },     // très doux, presque rien : la nuit
+  pulse: { ratio: 1.782, amp: 0.12, cutoff: 640, breath: 0.1 },    // sol : chaud, le cœur qui bat
+  daily: { ratio: 2.67, amp: 0.09, cutoff: 600, breath: 0.07 },    // ré aigu : la résonance du jour
+  free: { ratio: 2, amp: 0.05, cutoff: 520, breath: 0.07 },        // l'octave : neutre
+});
+
+/** Réponse impulsionnelle synthétique : bruit stéréo qui s'éteint, adouci (réverbération sans fichier). */
+function impulse(ctx, seconds, decay) {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = ctx.createBuffer(2, len, rate);
+  let seed = 987654321;
+  for (let c = 0; c < 2; c++) {
+    const data = buf.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const n = (seed / 4294967296) * 2 - 1;
+      lp += (n - lp) * (0.35 - 0.25 * (i / len)); // plus sourde en fin de queue
+      data[i] = lp * (1 - i / len) ** decay;
+    }
+  }
+  return buf;
+}
+
+/**
  * Crée le moteur audio. L'AudioContext n'est instancié qu'au premier geste
  * utilisateur (politique d'autoplay des navigateurs).
  */
@@ -91,7 +124,19 @@ export function createAudio() {
   let recordStream = null;
   let chunks = [];
   let drone = null;
-  const MAX_VOICES = 32;
+  let toneId = 'free';
+  const MAX_VOICES = 40;
+
+  /** Applique la couleur d'un chapitre au bourdon, en glissant (ou d'un coup au démarrage). */
+  function applyTone(d, id, instant) {
+    const p = TONES[id] ?? TONES.free;
+    const t = ctx.currentTime;
+    const tc = instant ? 0.01 : 1.6;
+    d.lp.frequency.setTargetAtTime(p.cutoff, t, tc);
+    d.breath.frequency.setTargetAtTime(p.breath, t, tc);
+    d.color.frequency.setTargetAtTime(d.root * p.ratio, t, instant ? 0.01 : 0.9);
+    d.colorGain.gain.setTargetAtTime(Math.max(0.0001, p.amp), t, tc);
+  }
 
   function ensure() {
     if (ctx) return true;
@@ -116,12 +161,12 @@ export function createAudio() {
     wobbleDepth.connect(delay.delayTime);
     wobble.start();
     const feedback = ctx.createGain();
-    feedback.gain.value = 0.4;
+    feedback.gain.value = 0.3;
     const damp = ctx.createBiquadFilter();
     damp.type = 'lowpass';
     damp.frequency.value = 1700;
     const wet = ctx.createGain();
-    wet.gain.value = 0.45;
+    wet.gain.value = 0.3;
 
     bus = ctx.createDynamicsCompressor();
     bus.threshold.value = -18;
@@ -134,6 +179,14 @@ export function createAudio() {
     feedback.connect(delay);
     damp.connect(wet);
     wet.connect(bus);
+    // Réverbération : une salle d'eau et de lumière (~3,4 s), en parallèle de l'écho.
+    const reverb = ctx.createConvolver();
+    reverb.buffer = impulse(ctx, 3.4, 2.4);
+    const reverbGain = ctx.createGain();
+    reverbGain.gain.value = 0.3;
+    master.connect(reverb);
+    reverb.connect(reverbGain);
+    reverbGain.connect(bus);
     bus.connect(ctx.destination);
 
     // Bruit blanc partagé (breath, scintillement).
@@ -192,9 +245,23 @@ export function createAudio() {
       mod.connect(mg);
       mg.connect(car.frequency);
       car.connect(out);
+      // Une seconde voix à peine désaccordée (scintillement naturel) et une sous-octave très douce.
+      const twin = ctx.createOscillator();
+      twin.frequency.value = freq;
+      twin.detune.value = 7;
+      const tg = ctx.createGain();
+      tg.gain.value = 0.35;
+      twin.connect(tg);
+      tg.connect(out);
+      const sub = ctx.createOscillator();
+      sub.frequency.value = freq / 2;
+      const sg = ctx.createGain();
+      sg.gain.value = 0.12;
+      sub.connect(sg);
+      sg.connect(out);
       const end = t + 2.8 + v;
-      car.start(t); mod.start(t); car.stop(end); mod.stop(end);
-      track(car, [car, mod, mg, out, node]);
+      for (const o of [car, mod, twin, sub]) { o.start(t); o.stop(end); }
+      track(car, [car, mod, mg, twin, tg, sub, sg, out, node]);
     },
     // Cloche des bells : partiels inharmoniques, une octave plus bas.
     bell(freq, v, t, pan) {
@@ -359,11 +426,42 @@ export function createAudio() {
         o.start(t);
         nodes.push(o, g);
       }
+      // La couleur du chapitre : une quatrième voix (toujours une note de la gamme), changée en glissant.
+      const color = ctx.createOscillator();
+      color.type = 'sine';
+      const colorGain = ctx.createGain();
+      colorGain.gain.value = 0.0001;
+      color.connect(colorGain);
+      colorGain.connect(lp);
+      color.start(t);
+      nodes.push(color, colorGain);
       breath.start(t);
       lp.connect(gain);
       gain.connect(master);
-      drone = { gain, nodes };
+      drone = { gain, nodes, lp, breath, color, colorGain, root };
+      applyTone(drone, toneId, true);
       return true;
+    },
+    /** Couleur sonore du chapitre : le bourdon glisse doucement vers la nouvelle teinte (quelques secondes). */
+    tone(id) {
+      toneId = own(TONES, id) ? id : 'free';
+      if (drone) applyTone(drone, toneId, false);
+    },
+    /**
+     * Éclosion d'une résonance : une nappe soufflée monte sur les notes du chant,
+     * quelques éclats aigus retombent, et le bourdon s'enfle un instant.
+     */
+    bloom(freqs, strength = 1) {
+      if (!enabled || !ctx) return;
+      const k = Math.min(1, Math.max(0.2, strength));
+      freqs.forEach((f, i) => this.note(f, { voice: 'breath', velocity: 0.28 * k, delay: 0.15 + i * 0.12, pan: (i % 2 ? -0.4 : 0.4) }));
+      [...freqs].reverse().slice(0, 3).forEach((f, i) => this.note(f * 2, { voice: 'glass', velocity: 0.16 * k, delay: 0.9 + i * 0.22, pan: (i - 1) * 0.5 }));
+      if (drone) {
+        const t = ctx.currentTime;
+        drone.gain.gain.cancelScheduledValues(t);
+        drone.gain.gain.setTargetAtTime(0.05 * (1 + 0.8 * k), t, 0.6);
+        drone.gain.gain.setTargetAtTime(0.05, t + 2.2, 1.6);
+      }
     },
     /** Accord de résolution : les notes du motif ensemble, égrenées comme une harpe lente. */
     chord(freqs, { velocity = 0.4, voice = 'bell', spread = 0.07 } = {}) {

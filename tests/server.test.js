@@ -34,6 +34,15 @@ test('public server works without Git and serves only public resources',async()=
   assert.equal((await fetch(origin+'/api/day/1999-01-01')).status,400);
   assert.equal((await fetch(origin+'/api/rien')).status,404);
   assert.equal((await fetch(api)).headers.get('cache-control'),'no-store');
+  // Mots des joueurs : accepté, trop court, robot, autre origine, lecture refusée, limite par heure.
+  const words=origin+'/api/words',word=(body,headers={})=>fetch(words,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+  assert.equal((await word({text:'Un très beau moment, merci.',sign:'Une joueuse'})).status,200);
+  assert.equal((await word({text:'ok'})).status,400);
+  assert.equal((await word({text:'je suis un robot',site:'http://spam'})).status,400);
+  assert.equal((await word({text:'depuis ailleurs'},{Origin:'https://ailleurs.example'})).status,403);
+  assert.equal((await fetch(words)).status,405);
+  for(let i=0;i<3;i++)assert.equal((await word({text:`encore un mot ${i}`})).status,200);
+  assert.equal((await word({text:'un mot de trop'})).status,429);
   const r=await fetch(origin+'/'),etag=r.headers.get('etag');assert.ok(etag);assert.equal((await fetch(origin+'/',{headers:{'If-None-Match':etag}})).status,304);
   assert.equal((await fetch(origin+'/',{method:'HEAD'})).status,200);assert.equal((await fetch(origin+'/',{method:'POST'})).status,405);assert.equal((await fetch(origin+'/__stop',{method:'POST'})).status,403);
   const exit=once(child,'exit');assert.equal((await fetch(origin+'/__stop',{method:'POST',headers:{'X-Pelagic-Stop':token}})).status,202);assert.equal((await exit)[0],0);

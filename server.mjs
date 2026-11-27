@@ -2,7 +2,7 @@ import http from 'node:http';
 import {readdir,readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {timingSafeEqual,createHash} from 'node:crypto';
-import {createChorus,createLimiter,acceptableDay,judgeTrace,PASS} from './chorus.mjs';
+import {createChorus,createLimiter,acceptableDay,judgeTrace,cleanWord,PASS} from './chorus.mjs';
 const root = new URL('./public/',import.meta.url);
 const types={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',json:'application/json; charset=utf-8',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',webp:'image/webp',ico:'image/x-icon',mp4:'video/mp4',md:'text/plain; charset=utf-8',txt:'text/plain; charset=utf-8'};
 const assets=new Map();
@@ -27,6 +27,7 @@ if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
 if(!['127.0.0.1','::1','0.0.0.0'].includes(host))throw new Error('Invalid HOST');
 const chorus=await createChorus();
 const allowVoice=createLimiter();
+const allowWord=createLimiter(4); // quatre mots par heure et par visiteur, en mémoire seulement
 const stopToken=!railway&&['127.0.0.1','::1'].includes(host)?process.env.PELAGIC_STOP_TOKEN:null;
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -78,6 +79,22 @@ const server=http.createServer(async(req,res)=>{
 // Chœur du jour : GET lit le chœur, POST y ajoute une voix (si elle est accordée). Réponses JSON, jamais en cache.
 async function api(req,res){
   const send=(code,data)=>{res.writeHead(code,{'Content-Type':types.json,'Cache-Control':'no-store'});res.end(req.method==='HEAD'?undefined:JSON.stringify(data));};
+  const origin=req.headers.origin;
+  const sameOrigin=()=>{if(!origin)return true;let from=null;try{from=new URL(origin).host;}catch{}return from===req.headers.host;};
+  // Un mot laissé par un joueur (depuis le manifeste) : POST seulement, jamais relu par l'API.
+  if(req.url.split('?')[0]==='/api/words'){
+    if(req.method!=='POST'){res.setHeader('Allow','POST');return send(405,{error:'method'});}
+    if(!sameOrigin())return send(403,{error:'origin'});
+    if(!/^application\/json\b/.test(req.headers['content-type']||''))return send(415,{error:'type'});
+    let body='';
+    for await(const chunk of req){body+=chunk;if(body.length>4096)return send(413,{error:'size'});}
+    let word;
+    try{word=cleanWord(JSON.parse(body));}catch{return send(400,{error:'json'});}
+    if(!word)return send(400,{error:'word'});
+    const who=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',')[0].trim();
+    if(!allowWord(who))return send(429,{error:'rate'});
+    try{await chorus.addWord(word);return send(200,{ok:true});}catch{return send(503,{error:'unavailable'});}
+  }
   const match=/^\/api\/day\/(\d{4}-\d{2}-\d{2})$/.exec(req.url.split('?')[0]);
   if(!match)return send(404,{error:'not_found'});
   const day=match[1];
@@ -85,8 +102,7 @@ async function api(req,res){
   try{
     if(req.method==='GET'||req.method==='HEAD')return send(200,await chorus.get(day));
     if(req.method!=='POST'){res.setHeader('Allow','GET, HEAD, POST');return send(405,{error:'method'});}
-    const origin=req.headers.origin;
-    if(origin){let from=null;try{from=new URL(origin).host;}catch{}if(from!==req.headers.host)return send(403,{error:'origin'});}
+    if(!sameOrigin())return send(403,{error:'origin'});
     if(!/^application\/json\b/.test(req.headers['content-type']||''))return send(415,{error:'type'});
     let body='';
     for await(const chunk of req){body+=chunk;if(body.length>4096)return send(413,{error:'size'});}

@@ -367,6 +367,14 @@ export function createAudio() {
       enabled = true;
       return true;
     },
+    /** L'app passe en arrière-plan : tout le son se met en veille (sans changer le réglage). */
+    sleep() {
+      if (ctx && ctx.state === 'running' && !this.recording) ctx.suspend().catch(() => {});
+    },
+    /** Retour au premier plan : le son reprend s'il était activé. */
+    wake() {
+      if (enabled && ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
+    },
     disable() {
       enabled = false;
       if (this.recording) return; // on ne coupe pas un enregistrement en cours

@@ -10,6 +10,21 @@
 import { DAILY_PASS as PASS, RESONANCE, attune, chorusGesture, dailyMotif, validTrace } from './public/src/game.js';
 
 export const RETENTION_DAYS = 45;
+
+/**
+ * Un mot laissé par un joueur : un texte de 3 à 600 caractères, une signature facultative (40 au plus).
+ * Le champ « site » est un piège à robots (invisible) : rempli, le mot est refusé.
+ */
+export function cleanWord(body) {
+  if (!body || typeof body !== 'object' || typeof body.text !== 'string') return null;
+  if (body.site) return null;
+  const tidy = (s, lines) => s.normalize('NFC').replace(lines ? /[\u0000-\u0009\u000B-\u001F\u007F]/g : /[\u0000-\u001F\u007F]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  const text = tidy(body.text, true);
+  const sign = typeof body.sign === 'string' ? tidy(body.sign, false).slice(0, 40) : '';
+  const version = typeof body.version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(body.version) ? body.version : null;
+  if (text.length < 3 || text.length > 600) return null;
+  return { text, sign, version };
+}
 const SHOWN = 24; // traces renvoyées au plus
 
 /** AAAA-MM-JJ plausible : hier, aujourd'hui ou demain en UTC (les fuseaux du monde entier). */
@@ -40,12 +55,23 @@ export async function createChorus({ url = process.env.DATABASE_URL, log = conso
       created DATE NOT NULL DEFAULT CURRENT_DATE
     )`);
     await pool.query('CREATE INDEX IF NOT EXISTS chorus_day ON chorus (day, score DESC)');
+    // Les mots des joueurs : le texte, la signature, la version du jeu et la date. Rien d'autre.
+    await pool.query(`CREATE TABLE IF NOT EXISTS words (
+      id BIGSERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      sign TEXT NOT NULL DEFAULT '',
+      version TEXT,
+      created TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
     const prune = () => pool.query(`DELETE FROM chorus WHERE day < CURRENT_DATE - ${RETENTION_DAYS}`).catch(() => {});
     prune();
     const timer = setInterval(prune, 6 * 3600 * 1000);
     timer.unref();
     return {
       kind: 'postgres',
+      async addWord(w) {
+        await pool.query('INSERT INTO words (text, sign, version) VALUES ($1, $2, $3)', [w.text, w.sign, w.version]);
+      },
       async add(day, trace, score) {
         await pool.query('INSERT INTO chorus (day, trace, dur, score) VALUES ($1, $2, $3, $4)', [day, trace.y, trace.dur, score]);
       },
@@ -67,8 +93,14 @@ export async function createChorus({ url = process.env.DATABASE_URL, log = conso
 
 function memoryChorus() {
   const days = new Map();
+  const words = [];
   return {
     kind: 'memory',
+    words,
+    async addWord(w) {
+      words.push({ ...w, created: new Date().toISOString() });
+      if (words.length > 500) words.shift();
+    },
     async add(day, trace, score) {
       if (!days.has(day)) days.set(day, []);
       const list = days.get(day);

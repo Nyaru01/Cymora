@@ -617,6 +617,18 @@ button.pearl:hover, button.pearl:focus-visible { transform: scale(1.5); outline:
 .map__mode--wide { grid-column: 1 / -1; }
 /* Herbier : une rangée par chapitre, cinq rosaces. */
 .herbier__row { margin: 0 0 12px; }
+.manifesto__text { margin: 0 0 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.manifesto__text p { margin: 0 0 10px; font: italic 17px/1.5 var(--serif); color: var(--soft); }
+.manifesto__text p:first-child { color: var(--accent); }
+.words__title { margin: 0 0 4px; font: italic 22px/1.2 var(--serif); color: var(--soft); }
+.words__text, .words__sign { display: block; width: 100%; box-sizing: border-box; margin: 10px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, 0.04); color: var(--soft); font: 16px/1.45 var(--sans); resize: vertical; }
+.words__text { min-height: 110px; }
+.words__text:focus, .words__sign:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+.words__text::placeholder, .words__sign::placeholder { color: var(--faint); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.words__site { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.words__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.words__privacy { margin: 10px 0 0; font: 12px/1.45 var(--sans); color: var(--faint); }
 .crown { margin: 0 0 18px; padding: 6px 0 16px; text-align: center; border-bottom: 1px solid var(--line); }
 .crown.is-away { display: none; }
 .crown__art { display: block; width: min(220px, 62vw); height: auto; aspect-ratio: 1; margin: 0 auto; filter: drop-shadow(0 0 18px rgba(255, 214, 140, 0.18)); }

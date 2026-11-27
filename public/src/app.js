@@ -30,7 +30,7 @@ const PULSE_SEEN = 'cymora.seen.pulse'; // idem pour le tutoriel de la pulsation
 const VISIT = 'cymora.visit'; // dernière venue, pour qu'elle te salue
 const RESET_KEY = 'cymora.reset'; // remise à zéro générale de la progression : changer RESET_EPOCH la relance chez tout le monde
 const RESET_EPOCH = '2026-11-25';
-const VERSION = '1.26.0'; // à garder égal à package.json (vérifié par les tests)
+const VERSION = '1.27.0'; // à garder égal à package.json (vérifié par les tests)
 const PULSE = 2.6; // durée d'une onde de résonance (s)
 const TAU = Math.PI * 2;
 const ROUND = 0.5; // à partir du chapitre 3, la matière dessine des figures arrondies
@@ -635,6 +635,7 @@ class Cymora {
     const map = $('#map');
     $('#map-daily').addEventListener('click', async () => { await closeDialog(map); this.startDaily(); });
     $('#map-free').addEventListener('click', async () => { await closeDialog(map); this.startFree(); });
+    this.bindWords();
     $('#map-herbier').addEventListener('click', async () => { await closeDialog(map); this.openHerbier(); });
     // L'atelier (prototypes) n'existe qu'en local : sur le site en ligne, ses boutons sont retirés.
     if (LOCAL) {
@@ -832,6 +833,43 @@ class Cymora {
   get herbierComplete() {
     const best = this.progress?.best ?? [];
     return best.length >= G.TIDES.length && best.every((tide) => tide.length >= G.MOTIFS_PER_TIDE && tide.every((v) => v >= G.PASS));
+  }
+
+  /** Le manifeste, et un mot à laisser (envoyé au serveur, lu par l'autrice ou l'auteur du jeu, jamais affiché). */
+  bindWords() {
+    const box = $('#manifesto');
+    const form = $('#words-form');
+    const status = $('#words-status');
+    const hints = () => { $('#words-text').placeholder = t('words.placeholder'); $('#words-sign').placeholder = t('words.sign'); };
+    hints();
+    i18n.onChange(hints);
+    $('#go-manifesto').addEventListener('click', () => { status.textContent = ''; openDialog(box); });
+    $('#manifesto-close').addEventListener('click', () => closeDialog(box));
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const text = $('#words-text').value.trim();
+      if (text.length < 3) { status.textContent = t('words.short'); return; }
+      const send = $('#words-send');
+      send.disabled = true;
+      status.textContent = t('words.sending');
+      try {
+        const r = await fetch('/api/words', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, sign: $('#words-sign').value.trim(), site: $('#words-site').value, version: VERSION }),
+        });
+        if (r.ok) {
+          form.reset();
+          status.textContent = t('words.thanks');
+          this.feel('resonance');
+          if (this.audio.enabled) this.audio.chord([G.degreeFreq(2), G.degreeFreq(4), G.degreeFreq(7)], { velocity: 0.25 });
+        } else status.textContent = t(r.status === 429 ? 'words.rate' : r.status === 400 ? 'words.short' : 'words.failed');
+      } catch {
+        status.textContent = t('words.failed');
+      } finally {
+        send.disabled = false;
+      }
+    });
   }
 
   openHerbier() {
@@ -1825,10 +1863,23 @@ class Cymora {
         else document.documentElement.requestFullscreen().catch(() => {});
       }
     });
-    document.addEventListener('visibilitychange', () => {
-      if (!this.audio.enabled) return;
-      this.audio.drone(!document.hidden && !this.herbier.open);
-    });
+    // En arrière-plan (autre appli, écran verrouillé), tout se tait : le moteur audio et les vidéos sonores.
+    const hush = () => {
+      this.audio.sleep();
+      this.hushed = [...document.querySelectorAll('video')].filter((v) => !v.paused && !v.muted);
+      for (const v of this.hushed) v.pause();
+    };
+    const wake = () => {
+      this.audio.wake();
+      if (this.audio.enabled) this.audio.drone(!this.herbier.open);
+      for (const v of this.hushed ?? []) v.play().catch(() => {});
+      this.hushed = null;
+    };
+    document.addEventListener('visibilitychange', () => (document.hidden ? hush() : wake()));
+    addEventListener('pagehide', hush);
+    addEventListener('pageshow', (ev) => { if (ev.persisted) wake(); });
+    // Certains téléphones refusent de reprendre le son sans un toucher : le premier toucher le réveille.
+    addEventListener('pointerdown', () => { if (!document.hidden) this.audio.wake(); }, { passive: true });
   }
 
   canDraw() {
